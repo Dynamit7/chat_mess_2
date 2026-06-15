@@ -1,0 +1,219 @@
+import { useRef } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { Avatar } from '@/components/ui/Avatar';
+import { colors, font, gradients } from '@/theme/theme';
+import { relativeShort, previewOf } from '@/lib/format';
+
+const BTN_W = 80;
+
+export type Entity = {
+  id: number;
+  name: string;
+  avatar?: string | null;
+  description?: string;
+  isPublic?: boolean;
+  membersCount?: number;
+  subscribersCount?: number;
+  lastMessage?: string;
+  lastMessageType?: string;
+  lastMessageSender?: string;
+  lastMessageTime?: string;
+  lastMessageIsForwarded?: boolean;
+  unreadCount?: number;
+};
+
+function RightActions({
+  muted,
+  pinned,
+  onMute,
+  onPin,
+  onDelete,
+  swipeable,
+  drag,
+}: {
+  muted?: boolean;
+  pinned?: boolean;
+  onMute?: () => void;
+  onPin?: () => void;
+  onDelete?: () => void;
+  swipeable: SwipeableMethods;
+  drag: SharedValue<number>;
+}) {
+  const count = (onMute ? 1 : 0) + (onPin ? 1 : 0) + (onDelete ? 1 : 0);
+  const totalW = count * BTN_W;
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{
+      translateX: interpolate(drag.value, [-totalW, 0], [0, totalW], Extrapolation.CLAMP),
+    }],
+  }));
+
+  const handle = (cb?: () => void) => () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    swipeable.close();
+    cb?.();
+  };
+
+  return (
+    <Animated.View style={[styles.actionsRow, animStyle]}>
+      {onMute && (
+        <Pressable style={[styles.action, { backgroundColor: colors.mute }]} onPress={handle(onMute)}>
+          <Ionicons name={muted ? 'volume-high' : 'volume-mute'} size={22} color="#fff" />
+          <Text style={styles.actionLabel}>{muted ? 'Вкл. звук' : 'Без звука'}</Text>
+        </Pressable>
+      )}
+      {onPin && (
+        <Pressable style={[styles.action, { backgroundColor: colors.pin }]} onPress={handle(onPin)}>
+          <Ionicons name={pinned ? 'pin-outline' : 'pin'} size={22} color="#fff" />
+          <Text style={styles.actionLabel}>{pinned ? 'Открепить' : 'Закрепить'}</Text>
+        </Pressable>
+      )}
+      {onDelete && (
+        <Pressable style={[styles.action, { backgroundColor: colors.danger }]} onPress={handle(onDelete)}>
+          <Ionicons name="trash" size={22} color="#fff" />
+          <Text style={styles.actionLabel}>Удалить</Text>
+        </Pressable>
+      )}
+    </Animated.View>
+  );
+}
+
+/** A group/channel row: avatar, name, last message preview, time + unread badge. */
+export function EntityRow({
+  entity,
+  kind,
+  onPress,
+  muted,
+  pinned,
+  onMute,
+  onPin,
+  onDelete,
+  onLongPress,
+  selectionMode,
+  selected,
+  draft,
+}: {
+  entity: Entity;
+  kind: 'group' | 'channel';
+  onPress: () => void;
+  muted?: boolean;
+  pinned?: boolean;
+  onMute?: () => void;
+  onPin?: () => void;
+  onDelete?: () => void;
+  onLongPress?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  draft?: string;
+}) {
+  const swipeRef = useRef<SwipeableMethods>(null);
+  const unread = entity.unreadCount || 0;
+  const count = entity.membersCount ?? entity.subscribersCount;
+  const preview = entity.lastMessage
+    ? `${entity.lastMessageSender ? entity.lastMessageSender + ': ' : ''}${previewOf(entity.lastMessage, entity.lastMessageType)}`
+    : entity.description || (count != null ? `${count} ${kind === 'group' ? 'members' : 'subscribers'}` : 'Tap to open');
+  const hasActions = !!(onMute || onPin || onDelete);
+
+  return (
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      enabled={hasActions && !selectionMode}
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      overshootFriction={8}
+      renderRightActions={(_prog, drag, swipeable) => (
+        <RightActions muted={muted} pinned={pinned} onMute={onMute} onPin={onPin} onDelete={onDelete} swipeable={swipeable} drag={drag} />
+      )}
+    >
+      <Pressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={220}
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed, selected && styles.rowSelected]}
+      >
+        {selectionMode && (
+          <View style={[styles.checkbox, selected && styles.checkboxOn]}>
+            {selected ? <Ionicons name="checkmark" size={15} color={colors.ink} /> : null}
+          </View>
+        )}
+        <View>
+          <Avatar name={entity.name} src={entity.avatar} size={54} />
+          <View style={styles.kindDot}>
+            <Ionicons name={kind === 'group' ? 'people' : 'megaphone'} size={11} color={colors.ink} />
+          </View>
+        </View>
+        <View style={styles.middle}>
+          <View style={styles.nameLine}>
+            {pinned && <Ionicons name="pin" size={12} color={colors.textFaint} style={styles.pinIcon} />}
+            <Text numberOfLines={1} style={styles.name}>{entity.name}</Text>
+          </View>
+          <View style={styles.previewLine}>
+            {draft ? (
+              <Text numberOfLines={1} style={styles.preview}>
+                <Text style={styles.draftLabel}>Черновик: </Text>
+                <Text style={styles.draftText}>{draft}</Text>
+              </Text>
+            ) : (
+              <>
+                {entity.lastMessageIsForwarded && (
+                  <Ionicons name="arrow-redo" size={13} color={colors.textFaint} style={{ marginRight: 2 }} />
+                )}
+                <Text numberOfLines={1} style={[styles.preview, unread > 0 && styles.previewUnread]}>{preview}</Text>
+              </>
+            )}
+            {muted && <Ionicons name="volume-mute" size={14} color={colors.textFaint} />}
+          </View>
+        </View>
+        <View style={styles.right}>
+          {entity.lastMessageTime ? <Text style={styles.time}>{relativeShort(entity.lastMessageTime)}</Text> : <View style={{ height: 14 }} />}
+          {unread > 0 ? (
+            <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badge}>
+              <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+            </LinearGradient>
+          ) : (
+            <View style={{ height: 22 }} />
+          )}
+        </View>
+      </Pressable>
+    </ReanimatedSwipeable>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'transparent' },
+  rowPressed: { backgroundColor: colors.glass },
+  rowSelected: { backgroundColor: colors.glass2 },
+  checkbox: {
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.stroke2,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  kindDot: {
+    position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: colors.bg,
+  },
+  middle: { flex: 1, gap: 4 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pinIcon: { transform: [{ rotate: '45deg' }] },
+  previewLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  name: { flex: 1, color: colors.text, fontFamily: font.bodySemi, fontSize: 16 },
+  preview: { flex: 1, color: colors.textFaint, fontFamily: font.body, fontSize: 14 },
+  previewUnread: { color: colors.textDim, fontFamily: font.bodyMed },
+  draftLabel: { color: colors.danger, fontFamily: font.bodyMed, fontSize: 14 },
+  draftText: { color: colors.textDim, fontFamily: font.body, fontSize: 14 },
+  right: { alignItems: 'flex-end', gap: 7, minWidth: 44 },
+  time: { color: colors.textFaint, fontFamily: font.mono, fontSize: 11 },
+  badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: colors.ink, fontFamily: font.bodyBold, fontSize: 11 },
+
+  actionsRow: { flexDirection: 'row', alignItems: 'stretch' },
+  action: { width: 80, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  actionLabel: { color: '#fff', fontFamily: font.bodySemi, fontSize: 11 },
+});

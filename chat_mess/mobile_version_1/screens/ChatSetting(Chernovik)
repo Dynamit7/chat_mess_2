@@ -1,0 +1,498 @@
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, ImageBackground } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+const ChatSettingsScreen = ({ navigation }) => {
+  const [selectedSound, setSelectedSound] = useState('Default');
+  const [backgroundImage, setBackgroundImage] = useState(null);
+  const [selectedFont, setSelectedFont] = useState('Default');
+  const [isSoundModalVisible, setSoundModalVisible] = useState(false);
+  const [isFontModalVisible, setFontModalVisible] = useState(false);
+
+  const sounds = ['Default', 'Chime', 'Ping', 'Ding'];
+  const fonts = ['Default', 'Roboto', 'Arial', 'Courier New'];
+  const backgrounds = [
+    null, // Default background
+    { uri: 'https://img.freepik.com/free-vector/messages-light-colour-background_78370-2586.jpg?semt=ais_hybrid' },
+    { uri: 'https://media.istockphoto.com/id/690445882/vector/social-media-blue-seamless-pattern.jpg?s=612x612&w=0&k=20&c=bashqfz8-1B2zRqj2GbOmQUupsWQyaIyzPeajhmRaWY=' },
+    { uri: 'https://img.freepik.com/premium-vector/chat-colorful-repeating-trendy-pattern-vector-illustration-background_90697-4507.jpg?semt=ais_hybrid' },
+  ];
+
+  const handleSelectSound = (sound) => {
+    setSelectedSound(sound);
+    setSoundModalVisible(false);
+  };
+
+  const handleSelectFont = (font) => {
+    setSelectedFont(font);
+    setFontModalVisible(false);
+  };
+
+  return (
+    <ImageBackground
+      source={backgroundImage || {uri: 'white'} }
+      style={{ flex: 1, padding: 20 }}
+      imageStyle={{ resizeMode: 'cover' }}
+    >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={30} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Настройки чата</Text>
+      </View>
+
+      {/* Изменение звуков уведомлений */}
+      <TouchableOpacity
+        style={styles.settingItem}
+        onPress={() => setSoundModalVisible(true)}
+      >
+        <Text style={styles.settingText}>Звуки уведомлений</Text>
+        <Text>{selectedSound}</Text>
+      </TouchableOpacity>
+
+      {/* Изменение шрифтов */}
+      <TouchableOpacity
+        style={styles.settingItem}
+        onPress={() => setFontModalVisible(true)}
+      >
+        <Text style={styles.settingText}>Изменение шрифта</Text>
+        <Text>{selectedFont}</Text>
+      </TouchableOpacity>
+
+      {/* Модалка выбора звуков */}
+      <Modal
+        transparent={true}
+        visible={isSoundModalVisible}
+        onRequestClose={() => setSoundModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <FlatList
+            data={sounds}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => handleSelectSound(item)}
+              >
+                <Text style={styles.modalText}>{item}</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+
+      {/* Модалка выбора шрифтов */}
+      <Modal
+        transparent={true}
+        visible={isFontModalVisible}
+        onRequestClose={() => setFontModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <FlatList
+            data={fonts}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => handleSelectFont(item)}
+              >
+                <Text style={{ ...styles.modalText, fontFamily: item }}>
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+
+      {/* Изменение обоев */}
+      <View style={styles.backgroundPreviewContainer}>
+        <FlatList
+          horizontal
+          data={backgrounds}
+          keyExtractor={(item, index) => `bg-${index}`}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.backgroundPreviewItem}
+              onPress={() => setBackgroundImage(item)}
+            >
+              {item ? (
+                <ImageBackground
+                  source={item}
+                  style={styles.backgroundPreview}
+                />
+              ) : (
+                <View style={styles.defaultBackgroundPreview}> 
+                <Text style={styles.modalText}>Default</Text>
+              </View> 
+              )}
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+    </ImageBackground>
+  );
+};
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginLeft: 10,
+    color: '#4a4a4a',
+  },
+  settingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 12,
+    marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  settingText: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#3a3a3a',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalItem: {
+    backgroundColor: '#fefefe',
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    borderRadius: 15,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  modalText: {
+    fontSize: 18,
+    color: '#4a4a4a',
+  },
+  backgroundPreviewContainer: {
+    marginTop: 20,
+    paddingHorizontal: 10,
+  },
+  backgroundPreviewItem: {
+    marginRight: 10,
+  },
+  backgroundPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  defaultBackgroundPreview: { 
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    justifyContent: 'center',
+    alignItems: 'center', 
+    backgroundColor: '#fff'
+  },
+});
+
+export default ChatSettingsScreen;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Switch, StyleSheet, Modal, FlatList, ImageBackground } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+const ChatSettingsScreen = ({ navigation }) => {
+  const [selectedSound, setSelectedSound] = useState('Default');
+  const [backgroundImage, setBackgroundImage] = useState(null);
+  const [selectedFont, setSelectedFont] = useState('Default');
+  const [isSoundModalVisible, setSoundModalVisible] = useState(false);
+  const [isBackgroundModalVisible, setBackgroundModalVisible] = useState(false);
+  const [isFontModalVisible, setFontModalVisible] = useState(false);
+
+  const sounds = ['Default', 'Chime', 'Ping', 'Ding'];
+  const fonts = ['Default', 'Roboto', 'Arial', 'Courier New'];
+  const backgrounds = [
+    null, // Default background
+    { uri: 'https://img.freepik.com/free-vector/messages-light-colour-background_78370-2586.jpg?semt=ais_hybrid' },
+    { uri: 'https://media.istockphoto.com/id/690445882/vector/social-media-blue-seamless-pattern.jpg?s=612x612&w=0&k=20&c=bashqfz8-1B2zRqj2GbOmQUupsWQyaIyzPeajhmRaWY=' },
+    { uri: 'https://img.freepik.com/premium-vector/chat-colorful-repeating-trendy-pattern-vector-illustration-background_90697-4507.jpg?semt=ais_hybrid' },
+  ];
+
+  const handleSelectSound = (sound) => {
+    setSelectedSound(sound);
+    setSoundModalVisible(false);
+  };
+
+  const handleSelectBackground = (background) => {
+    setBackgroundImage(background);
+    setBackgroundModalVisible(false);
+  };
+
+  const handleSelectFont = (font) => {
+    setSelectedFont(font);
+    setFontModalVisible(false);
+  };
+
+  return (
+    <ImageBackground
+      source={backgroundImage}
+      style={{ flex: 1, padding: 20 }}
+      imageStyle={{ resizeMode: 'cover' }}
+    >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={30} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Настройки чата</Text>
+      </View>
+
+      {/* Изменение звуков уведомлений */}
+      <TouchableOpacity
+        style={styles.settingItem}
+        onPress={() => setSoundModalVisible(true)}
+      >
+        <Text style={styles.settingText}>Звуки уведомлений</Text>
+        <Text>{selectedSound}</Text>
+      </TouchableOpacity>
+
+      {/* Изменение обоев */}
+      <TouchableOpacity
+        style={styles.settingItem}
+        onPress={() => setBackgroundModalVisible(true)}
+      >
+        <Text style={styles.settingText}>Изменить обои</Text>
+        <Ionicons name="image" size={24} color="#000" />
+      </TouchableOpacity>
+
+      {/* Изменение шрифтов */}
+      <TouchableOpacity
+        style={styles.settingItem}
+        onPress={() => setFontModalVisible(true)}
+      >
+        <Text style={styles.settingText}>Изменение шрифта</Text>
+        <Text>{selectedFont}</Text>
+      </TouchableOpacity>
+
+      {/* Модалка выбора звуков */}
+      <Modal
+        transparent={true}
+        visible={isSoundModalVisible}
+        onRequestClose={() => setSoundModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <FlatList
+            data={sounds}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => handleSelectSound(item)}
+              >
+                <Text style={styles.modalText}>{item}</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+
+      {/* Модалка выбора обоев */}
+      <Modal
+        transparent={true}
+        visible={isBackgroundModalVisible}
+        onRequestClose={() => setBackgroundModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <FlatList
+            data={backgrounds}
+            keyExtractor={(item, index) => `bg-${index}`}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => handleSelectBackground(item)}
+              >
+                {item ? (
+                  <ImageBackground
+                    source={item}
+                    style={styles.backgroundPreview}
+                  />
+                ) : (
+                  <Text style={styles.modalText}>Default</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+
+      {/* Модалка выбора шрифтов */}
+      <Modal
+        transparent={true}
+        visible={isFontModalVisible}
+        onRequestClose={() => setFontModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <FlatList
+            data={fonts}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => handleSelectFont(item)}
+              >
+                <Text style={{ ...styles.modalText, fontFamily: item }}>
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+    </ImageBackground>
+  );
+};
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginLeft: 10,
+    color: '#4a4a4a',
+  },
+  settingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 12,
+    marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  settingText: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#3a3a3a',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalItem: {
+    backgroundColor: '#fefefe',
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    borderRadius: 15,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  modalText: {
+    fontSize: 18,
+    color: '#4a4a4a',
+  },
+  backgroundPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    margin: 5,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+});
+
+
+export default ChatSettingsScreen;

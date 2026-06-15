@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Nexus",
+    "slug": "nexus-messenger",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "nexus",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0a16",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.xusan.nexusmessenger"
+    },
+    "android": {
+      "package": "com.xusan.nexusmessenger",
+      "adaptiveIcon": {
+        "backgroundColor": "#060814",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-video",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nexus needs access to your photos so you can share images in chats.",
+          "cameraPermission": "Nexus needs access to your camera so you can capture and share moments."
+        }
+      ],
+      "expo-splash-screen",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Nexus needs access to your microphone so you can record voice messages."
+        }
+      ],
+      "expo-sqlite"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8838ea9c-5f92-4ee6-99c2-9da8e14594dc"
+      }
+    }
+  }
+}

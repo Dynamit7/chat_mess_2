@@ -1,0 +1,559 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Clipboard from 'expo-clipboard';
+import { AuroraBackground } from '@/components/ui/AuroraBackground';
+import { Avatar } from '@/components/ui/Avatar';
+import { Button } from '@/components/ui/Button';
+import { MessageBubble } from '@/components/chat/MessageBubble';
+import { MessageActionSheet } from '@/components/chat/MessageActionSheet';
+import { ReactionsViewer } from '@/components/chat/ReactionsViewer';
+import { ForwardSheet } from '@/components/chat/ForwardSheet';
+import { Composer } from '@/components/chat/Composer';
+import { ScrollToBottomButton } from '@/components/chat/ScrollToBottomButton';
+import { SelectionBar } from '@/components/ui/SelectionBar';
+import { useSelection } from '@/lib/useSelection';
+import { groupsApi, Message, ForwardPayload } from '@/lib/api';
+import { decodeGroupMessageList, decodeGroupMessage, isBinary, GroupMsg } from '@/lib/groupProto';
+import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
+import { getIsOnline } from '@/lib/net';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { useAuth } from '@/state/auth';
+import { useSocket } from '@/state/socket';
+import { colors, font } from '@/theme/theme';
+import { dayLabel } from '@/lib/format';
+import { fixFileUrl } from '@/lib/config';
+
+const tempId = () => `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+const fileKind = (mime = '') =>
+  mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+
+type GMsg = Omit<GroupMsg, 'id'> & { id: number | string; status?: 'sending' | 'failed' };
+
+export default function GroupConversation() {
+  const { user } = useAuth();
+  const socket = useSocket();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ id: string; name: string; avatar: string; ownerId: string; isMember: string }>();
+  const me = Number(user?.userId);
+  const groupId = Number(params.id);
+  const [groupName, setGroupName] = useState(params.name || 'Group');
+  const [groupAvatar, setGroupAvatar] = useState(params.avatar || '');
+
+  const [messages, setMessages] = useState<GMsg[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<any[]>([]);
+  const [member, setMember] = useState(params.isMember !== 'false');
+  const [joining, setJoining] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Record<number, string>>({});
+  const [reactionsMap, setReactionsMap] = useState<Record<number, { userId: number; emoji: string }[]>>({});
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [editing, setEditing] = useState<Message | null>(null);
+  const [sheetMsg, setSheetMsg] = useState<Message | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<ForwardPayload | null>(null);
+  const [forwardMany, setForwardMany] = useState<ForwardPayload[] | null>(null);
+  const [reactorsMsg, setReactorsMsg] = useState<Message | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const sel = useSelection<number>();
+  const [atBottom, setAtBottom] = useState(true);
+  const [newCount, setNewCount] = useState(0);
+
+  const listRef = useRef<FlatList<GMsg>>(null);
+  const typingTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const atBottomRef = useRef(true);
+
+  const scrollToEnd = useCallback((animated = true) => {
+    requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated }));
+  }, []);
+
+  const onScroll = useCallback((e: any) => {
+    // Inverted list: the newest message sits at offset 0 (the visual bottom).
+    const near = e.nativeEvent.contentOffset.y < 120;
+    atBottomRef.current = near;
+    setAtBottom(near);
+    if (near) setNewCount(0);
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    setNewCount(0);
+    requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+  }, []);
+
+  const addMessage = useCallback((m: GMsg, fromMe = false) => {
+    setMessages((prev) => {
+      if (prev.some((p) => Number(p.id) === Number(m.id))) return prev;
+      if (fromMe) {
+        const ti = prev.findIndex((p) => p.status === 'sending' && p.text === m.text && Number(p.fromUserId) === me);
+        if (ti >= 0) {
+          const next = [...prev];
+          next[ti] = m;
+          return next;
+        }
+      }
+      return [...prev, m];
+    });
+  }, [me]);
+
+  // Load history + join room
+  useEffect(() => {
+    if (!member) { setLoading(false); return; }
+    let alive = true;
+    setLoading(true);
+    atBottomRef.current = true;
+    socket.emit('joinGroup', { groupId, userId: me });
+    socket.emit('joinRoom', `group_${groupId}`);
+    // online → API + cache; offline → read local SQLite
+    (async () => {
+      const key = cacheKeys.groupMessages(groupId);
+      if (!(await getIsOnline())) {
+        const cached = await cacheGet<GMsg[]>(key);
+        if (alive) { setMessages(cached || []); setLoading(false); scrollToEnd(false); }
+        return;
+      }
+      try {
+        const buf = await groupsApi.messagesRaw(groupId, me);
+        if (!alive) return;
+        const list = decodeGroupMessageList(buf);
+        setMessages(list);
+        setLoading(false);
+        scrollToEnd(false);
+        cacheSet(key, list.slice(-50));
+      } catch {
+        const cached = await cacheGet<GMsg[]>(key);
+        if (alive) { if (cached) setMessages(cached); setLoading(false); scrollToEnd(false); }
+      }
+    })();
+    groupsApi.members(groupId).then((m) => alive && setMembers(m || [])).catch(() => {});
+    groupsApi.reactions(groupId).then((map) => alive && setReactionsMap(map || {})).catch(() => {});
+    groupsApi.updateLastSeen(groupId, me).catch(() => {});
+    return () => { alive = false; };
+  }, [groupId, member]);
+
+  // Realtime
+  useEffect(() => {
+    if (!member) return;
+    const onReceived = (data: any) => {
+      let m: GMsg | null = null;
+      if (isBinary(data)) m = decodeGroupMessage(data);
+      else if (data && Number(data.groupId) === groupId)
+        m = { ...(data as any), fromUserId: data.userId, createdAt: data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString() };
+      if (!m || Number(m.groupId) !== groupId) return;
+      const mine = Number(m.fromUserId) === me;
+      addMessage(m, mine);
+      if (mine || atBottomRef.current) scrollToEnd();
+      else setNewCount((c) => c + 1);
+      if (!mine) groupsApi.updateLastSeen(groupId, me).catch(() => {});
+    };
+    const onUpdated = (data: any) => {
+      const m = isBinary(data) ? decodeGroupMessage(data) : data;
+      if (!m || Number(m.groupId) !== groupId) return;
+      setMessages((prev) => prev.map((x) => (Number(x.id) === Number(m.id) ? { ...x, ...m } : x)));
+    };
+    const onDeleted = ({ messageId }: any) => setMessages((prev) => prev.filter((x) => Number(x.id) !== Number(messageId)));
+    const onTyping = ({ userId, username, isTyping }: any) => {
+      if (Number(userId) === me) return;
+      setTypingUsers((prev) => { const n = { ...prev }; if (isTyping) n[userId] = username || `User ${userId}`; else delete n[userId]; return n; });
+      clearTimeout(typingTimers.current[userId]);
+      if (isTyping) typingTimers.current[userId] = setTimeout(() => setTypingUsers((p) => { const n = { ...p }; delete n[userId]; return n; }), 4000);
+    };
+    const onReactionAdded = ({ messageId, userId, emoji }: any) => {
+      setReactionsMap((prev) => {
+        const list = prev[messageId] || [];
+        if (list.some((r) => r.userId === userId && r.emoji === emoji)) return prev;
+        return { ...prev, [messageId]: [...list, { userId, emoji }] };
+      });
+    };
+    const onReactionRemoved = ({ messageId, userId, emoji }: any) =>
+      setReactionsMap((prev) => ({ ...prev, [messageId]: (prev[messageId] || []).filter((r) => !(r.userId === userId && r.emoji === emoji)) }));
+    const onCleared = ({ groupId: gid }: any) => { if (Number(gid) === groupId) setMessages([]); };
+    const onGroupUpdated = ({ groupId: gid, updatedFields }: any) => {
+      if (Number(gid) !== groupId) return;
+      if (updatedFields?.name) setGroupName(updatedFields.name);
+      if (updatedFields?.avatar) setGroupAvatar(updatedFields.avatar);
+    };
+
+    socket.on('groupMessageReceived', onReceived);
+    socket.on('groupMessageUpdated', onUpdated);
+    socket.on('groupMessageDeleted', onDeleted);
+    socket.on('groupTyping', onTyping);
+    socket.on('groupReactionAdded', onReactionAdded);
+    socket.on('groupReactionRemoved', onReactionRemoved);
+    socket.on('groupMessagesCleared', onCleared);
+    socket.on('groupUpdated', onGroupUpdated);
+    return () => {
+      socket.off('groupMessageReceived', onReceived);
+      socket.off('groupMessageUpdated', onUpdated);
+      socket.off('groupMessageDeleted', onDeleted);
+      socket.off('groupTyping', onTyping);
+      socket.off('groupReactionAdded', onReactionAdded);
+      socket.off('groupReactionRemoved', onReactionRemoved);
+      socket.off('groupMessagesCleared', onCleared);
+      socket.off('groupUpdated', onGroupUpdated);
+    };
+  }, [socket, groupId, me, member, addMessage, scrollToEnd]);
+
+  // Send
+  const sendText = async (text: string) => {
+    const tId = tempId();
+    const r = replyTo;
+    setMessages((prev) => [...prev, {
+      id: tId, groupId, fromUserId: me, userId: me, text, type: 'text', fileUrl: null, filename: null, replyToId: r ? Number(r.id) : null,
+      isDeleted: false, isEdited: false, createdAt: new Date().toISOString(), sender: { id: me, username: user!.username }, readBy: [me],
+      forwardedFromType: null, forwardedFromUsername: null,
+      replyTo: r ? { id: Number(r.id), text: r.text || '', fromUserId: r.fromUserId } : null, status: 'sending',
+    }]);
+    setReplyTo(null);
+    scrollToEnd();
+    try {
+      await groupsApi.sendMessage(groupId, { userId: me, text, replyToId: r ? Number(r.id) : undefined });
+    } catch {
+      setMessages((prev) => prev.map((m) => (m.id === tId ? { ...m, status: 'failed' } : m)));
+    }
+  };
+
+  const sendAsset = async (asset: { uri: string; name?: string; mime?: string }) => {
+    try {
+      await groupsApi.sendMessage(groupId, { userId: me, text: '', file: { uri: asset.uri, name: asset.name, type: asset.mime }, messageType: fileKind(asset.mime || '') });
+    } catch {
+      Alert.alert('Upload failed', 'Could not send that file.');
+    }
+  };
+
+  // Re-send a text message that previously failed; the socket echo reconciles it.
+  const resendGroupMessage = async (m: GMsg) => {
+    setMessages((prev) => prev.map((x) => (Number(x.id) === Number(m.id) ? { ...x, status: 'sending' } : x)));
+    try {
+      await groupsApi.sendMessage(groupId, { userId: me, text: m.text || '', replyToId: m.replyToId ?? undefined });
+    } catch {
+      setMessages((prev) => prev.map((x) => (Number(x.id) === Number(m.id) ? { ...x, status: 'failed' } : x)));
+    }
+  };
+  const retryMessage = (msg: Message) => {
+    const m = messages.find((x) => Number(x.id) === Number(msg.id));
+    if (!m) return;
+    Alert.alert('Сообщение не отправлено', undefined, [
+      { text: 'Повторить отправку', onPress: () => resendGroupMessage(m) },
+      { text: 'Удалить', style: 'destructive', onPress: () => setMessages((prev) => prev.filter((x) => Number(x.id) !== Number(msg.id))) },
+      { text: 'Отмена', style: 'cancel' },
+    ]);
+  };
+  const attach = () => Alert.alert('Share', undefined, [
+    { text: 'Photo / Video', onPress: pickMedia },
+    { text: 'File', onPress: pickFile },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+  const pickMedia = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.85 });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
+    sendAsset({ uri: a.uri, name: a.fileName || `media_${Date.now()}`, mime: a.mimeType || (a.type === 'video' ? 'video/mp4' : 'image/jpeg') });
+  };
+  const pickFile = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
+    sendAsset({ uri: a.uri, name: a.name, mime: a.mimeType });
+  };
+
+  const join = async () => {
+    setJoining(true);
+    try { await groupsApi.join(groupId, me); setMember(true); }
+    catch (e: any) { Alert.alert('Join failed', e?.response?.data?.error || 'Could not join.'); }
+    finally { setJoining(false); }
+  };
+
+  const react = async (mId: number, emoji: string) => {
+    setSheetMsg(null);
+    const existing = (reactionsMap[mId] || []).find((r) => r.userId === me && r.emoji === emoji);
+    setReactionsMap((prev) => {
+      const list = prev[mId] || [];
+      return { ...prev, [mId]: existing ? list.filter((r) => !(r.userId === me && r.emoji === emoji)) : [...list, { userId: me, emoji }] };
+    });
+    try { await groupsApi.react(groupId, mId, me, emoji); } catch {}
+  };
+
+  const onSheetAction = (action: 'reply' | 'edit' | 'copy' | 'forward' | 'delete' | 'select') => {
+    const msg = sheetMsg;
+    setSheetMsg(null);
+    if (!msg) return;
+    if (action === 'select') { sel.enter(Number(msg.fromUserId) === me ? Number(msg.id) : undefined); return; }
+    if (action === 'forward') {
+      setForwardMsg({
+        id: Number(msg.id),
+        sourceType: 'group',
+        text: msg.text,
+        type: msg.type,
+        fileUrl: msg.fileUrl ?? null,
+        filename: msg.filename ?? null,
+        senderUsername: msg.forwardedFromUsername || (msg as any).sender?.username || user?.username || '',
+      });
+      return;
+    }
+    if (action === 'reply') setReplyTo(msg);
+    else if (action === 'edit') setEditing(msg);
+    else if (action === 'copy') Clipboard.setStringAsync(msg.text || '');
+    else if (action === 'delete') {
+      setMessages((prev) => prev.filter((m) => Number(m.id) !== Number(msg.id)));
+      groupsApi.deleteMessage(groupId, msg.id, me).catch(() => {});
+    }
+  };
+  const saveEdit = async (newText: string) => {
+    const target = editing;
+    setEditing(null);
+    if (!target || newText === target.text) return;
+    setMessages((prev) => prev.map((m) => (Number(m.id) === Number(target.id) ? { ...m, text: newText, isEdited: true } : m)));
+    try { await groupsApi.editMessage(groupId, target.id, { userId: me, text: newText }); } catch {}
+  };
+
+  const emitTyping = (isTyping: boolean) => socket.emit('typing', { userId: me, groupId, isTyping });
+
+  // Map group message → Message shape for the shared bubble.
+  const toMessage = (m: GMsg): Message => ({
+    id: m.id, fromUserId: m.fromUserId, toUserId: 0, text: m.text, type: m.type, fileUrl: m.fileUrl || undefined,
+    filename: m.filename || undefined, createdAt: m.createdAt, isEdited: m.isEdited, isDeleted: m.isDeleted,
+    status: m.status,
+    forwardedFromType: m.forwardedFromType || null,
+    forwardedFromUsername: m.forwardedFromUsername || null,
+    replyTo: m.replyTo ? { id: m.replyTo.id, text: m.replyTo.text, fromUserId: m.replyTo.fromUserId } : null,
+    reactions: (reactionsMap[Number(m.id)] || []).map((r) => ({ messageId: m.id, userId: r.userId, emoji: r.emoji })),
+  });
+
+  const visible = messages.filter((m) => !m.isDeleted);
+  // Inverted list renders newest-first, so the latest message is at the bottom
+  // with no scrolling on entry. Reverse a copy for display only.
+  const data = [...visible].reverse();
+  const typingNames = Object.values(typingUsers);
+  // Only own messages can be deleted, so only those are selectable.
+  const selectableIds = visible.filter((m) => Number(m.fromUserId) === me).map((m) => Number(m.id));
+
+  const copySelected = () => {
+    const texts = messages
+      .filter((m) => sel.selected.has(Number(m.id)) && m.text && m.text.trim())
+      .map((m) => m.text!.trim());
+    if (texts.length) Clipboard.setStringAsync(texts.join('\n'));
+    sel.exit();
+  };
+
+  const forwardSelected = () => {
+    const payloads: ForwardPayload[] = messages
+      .filter((m) => sel.selected.has(Number(m.id)))
+      .map((m) => ({
+        id: Number(m.id),
+        sourceType: 'group' as const,
+        text: m.text,
+        type: m.type,
+        fileUrl: m.fileUrl ?? null,
+        filename: m.filename ?? null,
+        senderUsername: m.forwardedFromUsername || (m as any).sender?.username || user?.username || '',
+      }));
+    sel.exit();
+    if (payloads.length) setForwardMany(payloads);
+  };
+
+  const deleteSelected = () => {
+    const ids = [...sel.selected];
+    if (ids.length === 0) return;
+    Alert.alert('Удалить сообщения', `Удалить ${ids.length} ${ids.length === 1 ? 'сообщение' : 'сообщений'}?`, [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: () => {
+          const idSet = new Set(ids);
+          setMessages((prev) => prev.filter((m) => !idSet.has(Number(m.id))));
+          ids.forEach((id) => groupsApi.deleteMessage(groupId, id, me).catch(() => {}));
+          sel.exit();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <AuroraBackground>
+      {sel.active ? (
+        <SelectionBar
+          count={sel.count}
+          total={selectableIds.length}
+          paddingTop={insets.top}
+          onClose={sel.exit}
+          onSelectAll={() => sel.selectAll(selectableIds)}
+          extraActions={[
+            { icon: 'arrow-redo-outline', onPress: forwardSelected },
+            { icon: 'copy-outline', onPress: copySelected },
+          ]}
+          onDelete={deleteSelected}
+        />
+      ) : (
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable hitSlop={8} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(app)/(tabs)/groups'))} style={styles.headerBtn}>
+          <Ionicons name="chevron-back" size={26} color={colors.text} />
+        </Pressable>
+        <Pressable
+          hitSlop={4}
+          style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+          onPress={() => router.push({ pathname: '/(app)/group-info/[id]', params: { id: String(groupId), name: groupName, avatar: groupAvatar, isMember: String(!!member) } })}
+        >
+          <Avatar name={groupName} src={groupAvatar} size={42} />
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={styles.headerName}>{groupName}</Text>
+            <Text numberOfLines={1} style={[styles.headerStatus, typingNames.length > 0 && { color: colors.accent }]}>
+              {typingNames.length ? `${typingNames.slice(0, 2).join(', ')} typing…` : `${members.length || ''} member${members.length === 1 ? '' : 's'}`}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+      )}
+
+      {!member ? (
+        <View style={styles.joinWrap}>
+          <Avatar name={groupName} src={groupAvatar} size={96} ring />
+          <Text style={styles.joinTitle}>{groupName}</Text>
+          <Text style={styles.joinBody}>Join this group to see messages and participate.</Text>
+          <Button label="Join group" onPress={join} loading={joining} style={{ marginTop: 18, minWidth: 200 }} />
+        </View>
+      ) : (
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <OfflineBanner />
+          {loading ? (
+            <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+          ) : visible.length === 0 ? (
+            <View style={styles.center}><Text style={styles.empty}>No messages yet. Say hello! 👋</Text></View>
+          ) : (
+            <FlatList
+              ref={listRef}
+              data={data}
+              inverted
+              keyExtractor={(m) => String(m.id)}
+              contentContainerStyle={{ paddingVertical: 12 }}
+              showsVerticalScrollIndicator={false}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
+              renderItem={({ item, index }) => {
+                // data is newest-first, so the chronologically older message is next in the array.
+                const prev = data[index + 1];
+                const isOut = Number(item.fromUserId) === me;
+                const sameSender = prev && Number(prev.fromUserId) === Number(item.fromUserId);
+                const closeInTime = prev && new Date(item.createdAt).getTime() - new Date(prev.createdAt).getTime() < 4 * 60 * 1000;
+                const newDay = !prev || dayLabel(prev.createdAt) !== dayLabel(item.createdAt);
+                const grouped = !!(sameSender && closeInTime && !newDay);
+                return (
+                  <View>
+                    {newDay ? <View style={styles.daySep}><Text style={styles.dayText}>{dayLabel(item.createdAt)}</Text></View> : null}
+                    <MessageBubble
+                      msg={toMessage(item)}
+                      isOut={isOut}
+                      grouped={grouped}
+                      me={me}
+                      myUsername={user?.username}
+                      senderName={!isOut && !grouped ? item.sender?.username : undefined}
+                      onLongPress={(mm) => setSheetMsg(mm)}
+                      onImagePress={setLightbox}
+                      onReactToggle={(mm, emoji) => react(Number(mm.id), emoji)}
+                      onRetry={retryMessage}
+                      onReply={setReplyTo}
+                      onShowReactors={setReactorsMsg}
+                      selectionMode={sel.active}
+                      selected={sel.isSelected(Number(item.id))}
+                      selectable={isOut}
+                      onToggleSelect={(mm) => sel.toggle(Number(mm.id))}
+                    />
+                  </View>
+                );
+              }}
+            />
+          )}
+
+          {typingNames.length > 0 ? (
+            <View style={styles.typingRow}><Text style={styles.typingText}>{typingNames.slice(0, 2).join(', ')} typing…</Text></View>
+          ) : null}
+
+          <ScrollToBottomButton
+            visible={!sel.active && (!atBottom || newCount > 0)}
+            count={newCount}
+            onPress={jumpToLatest}
+            bottom={insets.bottom + 76}
+          />
+
+          {!sel.active && (
+            <View style={{ paddingBottom: insets.bottom + 6 }}>
+              <Composer
+                replyTo={replyTo}
+                editing={editing}
+                draftKey={Number.isFinite(me) ? `draft.${me}.group.${groupId}` : null}
+                onCancelReply={() => setReplyTo(null)}
+                onCancelEdit={() => setEditing(null)}
+                onSend={sendText}
+                onSaveEdit={saveEdit}
+                onAttach={attach}
+                onSendAudio={sendAsset}
+                onTyping={emitTyping}
+              />
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      )}
+
+      <MessageActionSheet
+        message={sheetMsg}
+        isOut={!!sheetMsg && Number(sheetMsg.fromUserId) === me}
+        onClose={() => setSheetMsg(null)}
+        onReact={(emoji) => sheetMsg && react(Number(sheetMsg.id), emoji)}
+        onAction={onSheetAction}
+      />
+      <ForwardSheet
+        visible={!!forwardMsg || !!(forwardMany && forwardMany.length)}
+        message={forwardMsg}
+        messages={forwardMany ?? undefined}
+        userId={me}
+        onClose={() => { setForwardMsg(null); setForwardMany(null); }}
+      />
+      <ReactionsViewer
+        visible={!!reactorsMsg}
+        reactions={(reactorsMsg?.reactions || []).map((r) => ({ userId: Number(r.userId), emoji: r.emoji }))}
+        resolveName={(id) => {
+          const mm: any = members.find((x: any) => Number(x.id ?? x.userId) === id);
+          return mm?.username || (id === me ? 'Вы' : `#${id}`);
+        }}
+        resolveAvatar={(id) => {
+          const mm: any = members.find((x: any) => Number(x.id ?? x.userId) === id);
+          return mm?.avatar || undefined;
+        }}
+        onClose={() => setReactorsMsg(null)}
+      />
+
+      <Modal visible={!!lightbox} transparent animationType="fade" onRequestClose={() => setLightbox(null)} statusBarTranslucent>
+        <Pressable style={styles.lightbox} onPress={() => setLightbox(null)}>
+          {lightbox ? <Image source={{ uri: fixFileUrl(lightbox) }} style={styles.lightboxImg} contentFit="contain" /> : null}
+          <View style={[styles.lightboxClose, { top: insets.top + 12 }]}><Ionicons name="close" size={28} color="#fff" /></View>
+        </Pressable>
+      </Modal>
+    </AuroraBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.stroke },
+  headerBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  headerName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
+  headerStatus: { color: colors.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  empty: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
+  joinWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 10 },
+  joinTitle: { color: colors.text, fontFamily: font.display, fontSize: 24, marginTop: 14 },
+  joinBody: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  daySep: { alignItems: 'center', marginVertical: 12 },
+  dayText: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 12, backgroundColor: colors.glass2, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' },
+  typingRow: { paddingHorizontal: 18, paddingBottom: 4 },
+  typingText: { color: colors.accent, fontFamily: font.bodyMed, fontSize: 12.5 },
+  lightbox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', alignItems: 'center', justifyContent: 'center' },
+  lightboxImg: { width: '100%', height: '80%' },
+  lightboxClose: { position: 'absolute', right: 18 },
+});

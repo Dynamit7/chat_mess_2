@@ -1,0 +1,188 @@
+{
+  "title": "ChatMess — Overview",
+  "uid": "chatmess-main",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "tags": ["chatmess"],
+  "panels": [
+
+    { "type": "row", "title": "📊 Обзор", "id": 100, "gridPos": {"h":1,"w":24,"x":0,"y":0}, "collapsed": false },
+
+    {
+      "type": "stat", "title": "Сообщений / мин", "id": 1,
+      "gridPos": {"h":4,"w":4,"x":0,"y":1},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color":"green","value":0},{"color":"yellow","value":50},{"color":"red","value":200}]}, "unit": "short"}},
+      "targets": [{"expr": "sum(rate(chatmess_messages_total[1m])) * 60", "legendFormat": "msg/min", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "stat", "title": "Активные соединения", "id": 2,
+      "gridPos": {"h":4,"w":4,"x":4,"y":1},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color":"blue","value":0},{"color":"green","value":1}]}, "unit": "short"}},
+      "targets": [{"expr": "sum(chatmess_socket_connections_active)", "legendFormat": "connections", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "stat", "title": "HTTP RPS", "id": 3,
+      "gridPos": {"h":4,"w":4,"x":8,"y":1},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color":"green","value":0},{"color":"yellow","value":100},{"color":"red","value":500}]}, "unit": "reqps"}},
+      "targets": [{"expr": "sum(rate(chatmess_http_requests_total[1m]))", "legendFormat": "rps", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "stat", "title": "Ошибок 5xx / мин", "id": 4,
+      "gridPos": {"h":4,"w":4,"x":12,"y":1},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color":"green","value":0},{"color":"red","value":1}]}, "unit": "short"}},
+      "targets": [{"expr": "sum(rate(chatmess_http_requests_total{status=~\"5..\"}[1m])) * 60", "legendFormat": "errors", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "stat", "title": "RAM (процесс)", "id": 5,
+      "gridPos": {"h":4,"w":4,"x":16,"y":1},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color":"green","value":0},{"color":"yellow","value":400000000},{"color":"red","value":550000000}]}, "unit": "bytes"}},
+      "targets": [{"expr": "sum(chatmess_process_resident_memory_bytes)", "legendFormat": "rss", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "stat", "title": "Uptime", "id": 6,
+      "gridPos": {"h":4,"w":4,"x":20,"y":1},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [{"expr": "min(chatmess_process_uptime_seconds)", "legendFormat": "uptime", "datasource": "Prometheus"}]
+    },
+
+    { "type": "row", "title": "💬 Сообщения", "id": 200, "gridPos": {"h":1,"w":24,"x":0,"y":5}, "collapsed": false },
+
+    {
+      "type": "timeseries", "title": "Сообщений в минуту по типу", "id": 7,
+      "gridPos": {"h":8,"w":12,"x":0,"y":6},
+      "options": {"tooltip": {"mode": "multi"}},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2}}},
+      "targets": [
+        {"expr": "rate(chatmess_messages_total{chat_type=\"direct\"}[1m]) * 60", "legendFormat": "Личные", "datasource": "Prometheus"},
+        {"expr": "rate(chatmess_messages_total{chat_type=\"group\"}[1m]) * 60", "legendFormat": "Группы", "datasource": "Prometheus"},
+        {"expr": "rate(chatmess_messages_total{chat_type=\"channel\"}[1m]) * 60", "legendFormat": "Каналы", "datasource": "Prometheus"}
+      ]
+    },
+
+    {
+      "type": "timeseries", "title": "Удалённых сообщений / мин", "id": 8,
+      "gridPos": {"h":8,"w":12,"x":12,"y":6},
+      "options": {"tooltip": {"mode": "multi"}},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}, "custom": {"lineWidth": 2}}},
+      "targets": [
+        {"expr": "rate(chatmess_messages_deleted_total{chat_type=\"direct\"}[1m]) * 60", "legendFormat": "Личные удалено", "datasource": "Prometheus"},
+        {"expr": "rate(chatmess_messages_deleted_total{chat_type=\"group\"}[1m]) * 60", "legendFormat": "Группы удалено", "datasource": "Prometheus"},
+        {"expr": "rate(chatmess_messages_deleted_total{chat_type=\"channel\"}[1m]) * 60", "legendFormat": "Каналы удалено", "datasource": "Prometheus"}
+      ]
+    },
+
+    { "type": "row", "title": "🌐 HTTP API", "id": 300, "gridPos": {"h":1,"w":24,"x":0,"y":14}, "collapsed": false },
+
+    {
+      "type": "timeseries", "title": "HTTP запросы по маршруту (RPS)", "id": 9,
+      "gridPos": {"h":8,"w":16,"x":0,"y":15},
+      "options": {"tooltip": {"mode": "multi"}, "legend": {"displayMode": "table", "placement": "right"}},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"lineWidth": 2}}},
+      "targets": [{"expr": "sum by (route) (rate(chatmess_http_requests_total[1m]))", "legendFormat": "{{route}}", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "gauge", "title": "Процент ошибок", "id": 10,
+      "gridPos": {"h":8,"w":8,"x":16,"y":15},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "minVizWidth": 75},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color":"green","value":0},{"color":"yellow","value":1},{"color":"red","value":5}]}}},
+      "targets": [{"expr": "100 * sum(rate(chatmess_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(chatmess_http_requests_total[5m]))", "legendFormat": "error %", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "heatmap", "title": "Время ответа HTTP (heatmap)", "id": 11,
+      "gridPos": {"h":8,"w":24,"x":0,"y":23},
+      "options": {"calculate": false, "cellGap": 1, "color": {"mode": "scheme", "scheme": "Spectral", "reverse": true}},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [{"expr": "sum(rate(chatmess_http_request_duration_seconds_bucket[5m])) by (le)", "legendFormat": "{{le}}", "format": "heatmap", "datasource": "Prometheus"}]
+    },
+
+    { "type": "row", "title": "🔌 Socket.IO", "id": 400, "gridPos": {"h":1,"w":24,"x":0,"y":31}, "collapsed": false },
+
+    {
+      "type": "timeseries", "title": "Активные WebSocket соединения", "id": 12,
+      "gridPos": {"h":8,"w":12,"x":0,"y":32},
+      "options": {"tooltip": {"mode": "multi"}},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 20}}},
+      "targets": [
+        {"expr": "sum by (instance) (chatmess_socket_connections_active)", "legendFormat": "{{instance}}", "datasource": "Prometheus"},
+        {"expr": "sum(chatmess_socket_connections_active)", "legendFormat": "Всего", "datasource": "Prometheus"}
+      ]
+    },
+
+    {
+      "type": "timeseries", "title": "Rate limiting срабатываний / мин", "id": 13,
+      "gridPos": {"h":8,"w":12,"x":12,"y":32},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2}}},
+      "targets": [{"expr": "sum by (action) (rate(chatmess_rate_limit_hits_total[1m])) * 60", "legendFormat": "{{action}}", "datasource": "Prometheus"}]
+    },
+
+    { "type": "row", "title": "💻 Система", "id": 500, "gridPos": {"h":1,"w":24,"x":0,"y":40}, "collapsed": false },
+
+    {
+      "type": "timeseries", "title": "CPU (все ядра)", "id": 14,
+      "gridPos": {"h":8,"w":8,"x":0,"y":41},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"lineWidth": 2}}},
+      "targets": [{"expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU %", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "timeseries", "title": "RAM сервера", "id": 15,
+      "gridPos": {"h":8,"w":8,"x":8,"y":41},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"lineWidth": 2}}},
+      "targets": [
+        {"expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "legendFormat": "Используется", "datasource": "Prometheus"},
+        {"expr": "node_memory_MemTotal_bytes", "legendFormat": "Всего", "datasource": "Prometheus"}
+      ]
+    },
+
+    {
+      "type": "timeseries", "title": "Диск I/O", "id": 16,
+      "gridPos": {"h":8,"w":8,"x":16,"y":41},
+      "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"lineWidth": 2}}},
+      "targets": [
+        {"expr": "rate(node_disk_read_bytes_total[1m])", "legendFormat": "Чтение", "datasource": "Prometheus"},
+        {"expr": "rate(node_disk_written_bytes_total[1m])", "legendFormat": "Запись", "datasource": "Prometheus"}
+      ]
+    },
+
+    { "type": "row", "title": "🗄️ Redis", "id": 600, "gridPos": {"h":1,"w":24,"x":0,"y":49}, "collapsed": false },
+
+    {
+      "type": "timeseries", "title": "Redis команды / сек", "id": 17,
+      "gridPos": {"h":8,"w":8,"x":0,"y":50},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"lineWidth": 2}}},
+      "targets": [{"expr": "rate(redis_commands_processed_total[1m])", "legendFormat": "ops/s", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "timeseries", "title": "Redis память", "id": 18,
+      "gridPos": {"h":8,"w":8,"x":8,"y":50},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"lineWidth": 2}}},
+      "targets": [{"expr": "redis_memory_used_bytes", "legendFormat": "Используется", "datasource": "Prometheus"}]
+    },
+
+    {
+      "type": "stat", "title": "Redis — подключённые клиенты", "id": 19,
+      "gridPos": {"h":8,"w":8,"x":16,"y":50},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color":"green","value":0},{"color":"yellow","value":50}]}}},
+      "targets": [{"expr": "redis_connected_clients", "legendFormat": "clients", "datasource": "Prometheus"}]
+    }
+
+  ]
+}

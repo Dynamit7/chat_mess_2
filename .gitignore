@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets — never publish real .env (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Editor / tooling
+.vscode/
+.idea/
+
+# Backups of the per-subproject git repos (kept locally, not published)
+**/.git.bak/
+
+# Expo / Metro / React Native
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.jsbundle
+
+# Native build outputs
+**/android/build/
+**/android/app/build/
+**/android/.gradle/
+**/ios/build/
+**/ios/Pods/
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# Local databases / uploaded files
+*.sqlite
+*.sqlite3
+*.db
+**/Uploads/
+**/uploads/
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS
+.DS_Store
+Thumbs.db

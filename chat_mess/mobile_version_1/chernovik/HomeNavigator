@@ -1,0 +1,242 @@
+// import React, { useEffect, useState } from 'react';
+// import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+// import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+// import ConversationsScreen from '../screens/ConversationsScreen';
+// import CameraScreen from '../screens/CameraScreen';
+// import StoriesScreen from '../screens/StoriesScreen';
+// import CallsScreen from '../screens/CallsScreen';
+
+// import { Animated, View, TouchableOpacity, Platform, Dimensions, StyleSheet } from 'react-native';
+// import { useLinkBuilder, useTheme } from '@react-navigation/native';
+
+// import { theme } from '../theme';
+
+// const { width } = Dimensions.get('screen');
+
+// const CAMERA_TAB_ITEM_WIDTH = width * 0.1;
+// const NORMAL_TAB_ITEM_WIDTH = width * 0.3;
+
+// const Tab = createMaterialTopTabNavigator();
+
+// const TabBarIndicator = ({state}) =>{
+//   const [translateValue, setTranslateValue] = useState(new Animated.Value(CAMERA_TAB_ITEM_WIDTH));
+//   const [itemWidth, setItemWidth] = useState(NORMAL_TAB_ITEM_WIDTH);
+
+//   useEffect(() => {
+//     slide();
+//   }, [state]);
+
+//   const slide = () =>{
+//     setItemWidth(state.routes[state.index].name === "Camera" ? CAMERA_TAB_ITEM_WIDTH : NORMAL_TAB_ITEM_WIDTH);
+//     const toValue = state.routes[state.index].name === "Camera" ? 0 : 
+//     state.routes[state.index].name === "Conversations" ? CAMERA_TAB_ITEM_WIDTH : CAMERA_TAB_ITEM_WIDTH + ((state.index - 1) * NORMAL_TAB_ITEM_WIDTH);
+//     Animated.timing(translateValue, {
+//       toValue: toValue,
+//       duration: 300,
+//       useNativeDriver: true
+//     }).start();
+//   }
+
+//   return (
+//     <Animated.View 
+//       style={{position: 'absolute', 
+//       width: itemWidth, 
+//       borderBottomColor: theme.colors.white, 
+//       borderBottomWidth: 3,
+//       bottom: 0,
+//       transform: [{translateX: translateValue}]
+//     }} /> 
+//   )
+// }
+
+// const MyTabBar = ({ state, descriptors, navigation, position }) => {
+//   const { colors } = useTheme();
+//   const { buildHref } = useLinkBuilder();
+
+//   return (
+//     <View style={styles.tabBarContainer}>
+//       {state.routes.map((route, index) => {
+//         const { options } = descriptors[route.key];
+//         const label =
+//           options.tabBarLabel !== undefined
+//             ? options.tabBarLabel
+//             : options.title !== undefined
+//             ? options.title
+//             : route.name;
+
+//         const isFocused = state.index === index;
+//         const tabBarItemWidth = route.name === 'Camera' ? CAMERA_TAB_ITEM_WIDTH : NORMAL_TAB_ITEM_WIDTH;
+
+//         const onPress = () => {
+//           const event = navigation.emit({
+//             type: 'tabPress',
+//             target: route.key,
+//             canPreventDefault: true,
+//           });
+
+//           if (!isFocused && !event.defaultPrevented) {
+//             navigation.navigate(route.name, route.params);
+//           }
+//         };
+
+//         const onLongPress = () => {
+//           navigation.emit({
+//             type: 'tabLongPress',
+//             target: route.key,
+//           });
+//         };
+
+//         const inputRange = state.routes.map((_, i) => i);
+//         const opacity = position.interpolate({
+//           inputRange,
+//           outputRange: inputRange.map((i) => (i === index ? 1 : 0)),
+//         });
+
+//         return (
+//           <TouchableOpacity
+//             key={route.name}
+//             href={buildHref(route.name, route.params)}
+//             accessibilityRole={Platform.OS === 'web' ? 'link' : 'button'}
+//             accessibilityState={isFocused ? { selected: true } : {}}
+//             accessibilityLabel={options.tabBarAccessibilityLabel}
+//             testID={options.tabBarButtonTestID}
+//             onPress={onPress}
+//             onLongPress={onLongPress}
+//             style={[styles.tabBarItem, { width: tabBarItemWidth }]}
+//           >
+//             {route.name === 'Camera' ? (
+//               <Animated.View>
+//                 <Icon name="camera" size={25} color={theme.colors.white} />
+//               </Animated.View>
+//             ) : (
+//               <Animated.Text style={[styles.tabBarText, { opacity }]}>
+//                 {label}
+//               </Animated.Text>
+//             )}
+//           </TouchableOpacity>
+//         );
+//       })}
+//       <TabBarIndicator state={state}/>
+//     </View>
+//   );
+// };
+
+// export default function HomeNavigator() {
+//   return (
+//     <Tab.Navigator
+//       initialRouteName="Conversations"
+//       tabBar={(props) => <MyTabBar {...props} />}
+//       style={styles.tabNavigator}
+//     >
+//       <Tab.Screen
+//         name="Camera"
+//         component={CameraScreen}
+//         options={{ tabBarShowLabel: false }}
+//       />
+//       <Tab.Screen
+//         name="Conversations"
+//         component={ConversationsScreen}
+//         options={{ tabBarLabel: 'Disc.' }}
+//       />
+//       <Tab.Screen
+//         name="Stories"
+//         component={StoriesScreen}
+//         options={{
+//           tabBarIcon: ({ color }) => <Icon name="book-open" size={25} color={color} />,
+//         }}
+//       />
+//       <Tab.Screen
+//         name="Calls"
+//         component={CallsScreen}
+//         options={{
+//           tabBarIcon: ({ color }) => <Icon name="phone" size={25} color={color} />,
+//         }}
+//       />
+//     </Tab.Navigator>
+//   );
+// }
+
+// const styles = StyleSheet.create({
+//   tabNavigator: {
+//     backgroundColor: theme.colors.white,
+//     flex: 1, // Ensure it fills available space
+//   },
+//   tabBarContainer: {
+//     flexDirection: 'row',
+//     backgroundColor: theme.colors.primary, // Customize as needed
+//     height: 50, // Adjust height to fit content
+//     alignItems: 'center',
+//   },
+//   tabBarItem: {
+//     justifyContent: 'center',
+//     alignItems: 'center',
+//   },
+//   tabBarText: {
+//     color: theme.colors.white,
+//     fontWeight: 'bold',
+//   },
+// });
+
+
+
+// //////////////////////////////Birinchisi//////////////////////////////////
+
+
+// import React from 'react';
+// import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+// import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+
+// import ConversationsScreen from '../screens/ConversationsScreen';
+// import CameraScreen from '../screens/CameraScreen';
+// import StoriesScreen from '../screens/StoriesScreen';
+// import CallsScreen from '../screens/CallsScreen';
+
+// import { theme } from '../theme';
+
+// const Tab = createMaterialTopTabNavigator();
+
+// export default function HomeNavigator() {
+//   return (
+//     <Tab.Navigator
+//       initialRouteName="Conversations"
+      
+//       screenOptions={{
+//         tabBarActiveTintColor: theme.colors.white,
+//         tabBarInactiveTintColor: theme.colors.white,
+//         tabBarStyle: { backgroundColor: theme.colors.primary },
+//         tabBarLabelStyle: { fontWeight: 'bold' },
+//         tabBarIndicatorStyle: { backgroundColor: theme.colors.white },
+//       }}
+//     >
+//       <Tab.Screen
+//         name="Camera"
+//         component={CameraScreen}
+//         options={{
+//           tabBarShowLabel: false,
+//           tabBarIcon: ({ color }) => <Icon name="camera" size={25} color={color} />,
+//         }}
+//       />
+//       <Tab.Screen
+//         name="Conversations"
+//         component={ConversationsScreen}
+//         options={{
+//           tabBarLabel: 'Disc.',
+//         }}
+//       />
+//       <Tab.Screen
+//         name="Stories"
+//         component={StoriesScreen}
+//         options={{
+//           tabBarIcon: ({ color }) => <Icon name="book-open" size={25} color={color} />,
+//         }}
+//       />
+//       <Tab.Screen
+//         name="Calls"
+//         component={CallsScreen}
+//         options={{
+//           tabBarIcon: ({ color }) => <Icon name="phone" size={25} color={color} />,
+//         }}
+//       />
+//     </Tab.Navigator>
+//   );
+// }

@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: always
+    command: redis-server --requirepass nexus_dev_password_2026
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: nexus_admin
+      MINIO_ROOT_PASSWORD: nexus_dev_password_2026
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - app-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend_app
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - ENCRYPTION_KEY=d82ac6f9de50b7ae41b8fbe8e7e0a926f8045f67e96ef5aaf961ef7a7cddb7ac
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=myuser
+      - DB_PASS=mypassword
+      - DB_NAME=mydatabase
+      - MINIO_ENDPOINT=minio
+      - MINIO_ROOT_USER=nexus_admin
+      - MINIO_ROOT_PASSWORD=nexus_dev_password_2026
+      - MINIO_PORT=9000
+      - MINIO_PUBLIC_URL=http://localhost:9000
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  pg_data:
+  minio_data:

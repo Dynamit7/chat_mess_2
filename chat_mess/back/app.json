@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "8838ea9c-5f92-4ee6-99c2-9da8e14594dc"
+      }
+    },
+    "android": {
+      "package": "com.xusan.backendchat"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+# Секреты — НИКОГДА не коммитить
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+back/node_modules/
+front/node_modules/
+web/node_modules/
+admin/node_modules/
+
+# Builds
+dist/
+build/
+.expo/
+
+# Логи
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads (медиафайлы — хранить в MinIO, не в git)
+back/Uploads/
+back/uploads/
+
+# PM2
+.pm2/
+
+# Большие архивы — не нужны в git
+*.zip
+*.tar.gz
+
+# MinIO данные
+minio-data/
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,105 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --requirepass nexus_dev_password_2026
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: nexus_admin
+      MINIO_ROOT_PASSWORD: nexus_dev_password_2026
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    volumes:
+      - minio_data:/data
+
+  # ─── WebRTC TURN сервер ──────────────────────────────────────────────────────
+  # Нужен для звонков через NAT/firewall (корпоративные сети, мобильный интернет)
+  # Открой порты в firewall: 3478/tcp+udp, 5349/tcp+udp, 49152-65535/udp
+  coturn:
+    image: coturn/coturn:latest
+    network_mode: host   # нужен host mode для корректной работы с IP
+    restart: unless-stopped
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    command: -c /etc/coturn/turnserver.conf
+
+  # ─── Мониторинг ─────────────────────────────────────────────────────────────
+
+  # Сборщик метрик системы (CPU, RAM, диск, сеть)
+  node_exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9102:9100"
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+
+  # Redis Exporter — метрики Redis
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    ports:
+      - "9121:9121"
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: nexus_dev_password_2026
+    depends_on:
+      - redis
+
+  # Prometheus — собирает все метрики
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+
+  # Grafana — визуализация
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3333:3000"
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: grafana_admin_2026
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3333
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  redis_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
