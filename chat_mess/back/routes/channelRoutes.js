@@ -263,10 +263,11 @@ router.post("/", (req, res) => {
       const channelPlain = newChannel.get({ plain: true });
       channelPlain.members = allMembers;
 
+      // Инвалидируем кэш ПЕРЕД эмитом: иначе клиент по событию channelCreated
+      // успеет перезагрузить список и прочитать ещё не сброшенный кэш.
+      await Promise.all(allMembers.map((mId) => invalidateChannelsList(mId)));
       allMembers.forEach((mId) => {
         req.io.to(`user_${mId}`).emit("channelCreated", channelPlain);
-        // Инвалидируем кэш списка каналов для всех участников
-        invalidateChannelsList(mId);
       });
 
       return res.json(newChannel);
@@ -520,13 +521,49 @@ router.post("/:id/join", async (req, res) => {
 router.get("/:channelId/messages", async (req, res) => {
   try {
     const { channelId } = req.params;
-    
+    const { limit, before } = req.query;
+
+    // Формирует ответный пост с расшифрованным текстом и числом комментариев.
+    const formatPost = async (post) => {
+      const postData = post.get({ plain: true });
+      postData.text = decrypt(post.text);
+      postData.commentsCount = await ChannelMessage.count({
+        where: { parentMessageId: post.id, isDeleted: false },
+      });
+      return postData;
+    };
+
+    // --- Пагинация (опционально) ------------------------------------------
+    // ?limit=N (&before=<postId>) — отдаём последние N постов старше курсора как
+    // страницу: { messages, hasMore, nextBefore }. Без параметров — старое
+    // поведение (все посты + кэш), чтобы не сломать существующих клиентов.
+    if (limit !== undefined) {
+      const pageSize = Math.min(Math.max(parseInt(limit, 10) || 40, 1), 100);
+      const where = { channelId, parentMessageId: null, isDeleted: false };
+      if (before && !isNaN(before)) where.id = { [Op.lt]: parseInt(before, 10) };
+      const rows = await ChannelMessage.findAll({
+        where,
+        order: [["createdAt", "DESC"]],
+        limit: pageSize + 1,
+        include: [{ model: User, as: "sender", attributes: ["id", "username"] }],
+      });
+      const hasMore = rows.length > pageSize;
+      const page = (hasMore ? rows.slice(0, pageSize) : rows).reverse();
+      const messages = [];
+      for (const post of page) messages.push(await formatPost(post));
+      return res.json({
+        messages,
+        hasMore,
+        nextBefore: page.length ? page[0].id : null,
+      });
+    }
+
     // Проверяем кэш
     const cachedMessages = await getCachedChannelMessages(channelId);
     if (cachedMessages) {
       return res.json(cachedMessages);
     }
-    
+
     const posts = await ChannelMessage.findAll({
       where: {
         channelId,
@@ -538,15 +575,7 @@ router.get("/:channelId/messages", async (req, res) => {
     });
 
     const formattedPosts = [];
-    for (let post of posts) {
-      const postData = post.get({ plain: true });
-      postData.text = decrypt(post.text);
-      const count = await ChannelMessage.count({
-        where: { parentMessageId: post.id, isDeleted: false },
-      });
-      postData.commentsCount = count;
-      formattedPosts.push(postData);
-    }
+    for (let post of posts) formattedPosts.push(await formatPost(post));
 
     // Кэшируем результат
     await cacheChannelMessages(channelId, formattedPosts);

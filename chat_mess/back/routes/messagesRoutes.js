@@ -266,7 +266,13 @@ router.post("/sendMessage", async (req, res) => {
     await addNotificationToQueue({
       userId: toUserId,
       type: "message",
-      data: messageData,
+      // Кладём имя/аватар отправителя, чтобы тап по пушу открывал чат сразу с
+      // заполненным заголовком (а не "Chat" без аватара).
+      data: {
+        ...messageData,
+        senderUsername: senderInfo?.username || "",
+        senderPicture: senderInfo?.avatar || "",
+      },
     });
 
     return res.status(200).json({ success: true, message: messageData });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Modal, View, Text, StyleSheet, FlatList, Pressable,
   TextInput, ActivityIndicator,
@@ -8,7 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
 import { messagesApi, groupsApi, channelsApi, ForwardPayload } from '@/lib/api';
-import { colors, font, gradients, radius } from '@/theme/theme';
+import { font, gradients, radius, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 type Tab = 'chats' | 'groups' | 'channels';
 
@@ -26,10 +27,14 @@ type Props = {
   messages?: ForwardPayload[];
   userId: number;
   onClose: () => void;
+  /** Fired once after the forward request(s) succeed, before the sheet closes. */
+  onSent?: () => void;
 };
 
-export function ForwardSheet({ visible, message, messages, userId, onClose }: Props) {
+export function ForwardSheet({ visible, message, messages, userId, onClose, onSent }: Props) {
   const insets = useSafeAreaInsets();
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [tab, setTab] = useState<Tab>('chats');
   const [query, setQuery] = useState('');
   const [allChats, setAllChats] = useState<Dest[]>([]);
@@ -118,6 +123,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
       for (const p of payloads) {
         await messagesApi.forward({ userId, sourceMessage: p, destinations });
       }
+      onSent?.();
       close();
     } catch {
       // silent — toast can be added later
@@ -158,7 +164,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
         <View style={styles.header}>
           <Text style={styles.title}>{payloads.length > 1 ? `Переслать ${payloads.length} сообщений` : 'Переслать сообщение'}</Text>
           <Pressable hitSlop={12} onPress={close}>
-            <Ionicons name="close" size={22} color={colors.textDim} />
+            <Ionicons name="close" size={22} color={c.textDim} />
           </Pressable>
         </View>
 
@@ -175,7 +181,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
                 <Ionicons
                   name={t.icon}
                   size={15}
-                  color={active ? colors.accent : colors.textFaint}
+                  color={active ? c.accent : c.textFaint}
                 />
                 <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
                   {t.label}
@@ -189,19 +195,19 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
 
         {/* Search */}
         <View style={styles.searchRow}>
-          <Ionicons name="search-outline" size={16} color={colors.textFaint} />
+          <Ionicons name="search-outline" size={16} color={c.textFaint} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Поиск…"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={c.textFaint}
             style={styles.searchInput}
             autoCorrect={false}
             autoCapitalize="none"
           />
           {query.length > 0 && (
             <Pressable hitSlop={8} onPress={() => setQuery('')}>
-              <Ionicons name="close-circle" size={16} color={colors.textFaint} />
+              <Ionicons name="close-circle" size={16} color={c.textFaint} />
             </Pressable>
           )}
         </View>
@@ -209,11 +215,11 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
         {/* List */}
         {loadingData ? (
           <View style={styles.center}>
-            <ActivityIndicator color={colors.accent} size="large" />
+            <ActivityIndicator color={c.accent} size="large" />
           </View>
         ) : filtered.length === 0 ? (
           <View style={styles.center}>
-            <Ionicons name="search-outline" size={36} color={colors.textFaint} />
+            <Ionicons name="search-outline" size={36} color={c.textFaint} />
             <Text style={styles.empty}>
               {query.trim() ? 'Ничего не найдено' : 'Нет элементов'}
             </Text>
@@ -234,10 +240,10 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
                   onPress={() => toggle(d)}
                   style={({ pressed }) => [
                     styles.row,
-                    pressed && { backgroundColor: colors.glass },
+                    pressed && { backgroundColor: c.glass },
                   ]}
                 >
-                  <Avatar name={d.name} src={d.avatar} size={46} />
+                  <Avatar name={d.name} src={d.avatar} size={46} palette={c} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowName} numberOfLines={1}>{d.name}</Text>
                     <Text style={styles.rowType}>
@@ -246,7 +252,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
                   </View>
                   <View style={[styles.checkbox, checked && styles.checkboxActive]}>
                     {checked && (
-                      <Ionicons name="checkmark" size={14} color={colors.ink} />
+                      <Ionicons name="checkmark" size={14} color={c.ink} />
                     )}
                   </View>
                 </Pressable>
@@ -278,8 +284,8 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
                 style={styles.sendBtn}
               >
                 {sending
-                  ? <ActivityIndicator size="small" color={colors.ink} />
-                  : <Ionicons name="send" size={20} color={colors.ink} />
+                  ? <ActivityIndicator size="small" color={c.ink} />
+                  : <Ionicons name="send" size={20} color={c.ink} />
                 }
               </LinearGradient>
             </Pressable>
@@ -290,22 +296,22 @@ export function ForwardSheet({ visible, message, messages, userId, onClose }: Pr
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
 
   sheet: {
-    backgroundColor: colors.bg2 ?? '#12102A',
+    backgroundColor: c.bg2 ?? '#12102A',
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: c.stroke,
     maxHeight: '82%',
   },
   handle: {
     alignSelf: 'center',
     width: 40, height: 4,
     borderRadius: 2,
-    backgroundColor: colors.stroke2 ?? colors.stroke,
+    backgroundColor: c.stroke2 ?? c.stroke,
     marginTop: 10, marginBottom: 2,
   },
 
@@ -313,13 +319,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
   },
-  title: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
+  title: { color: c.text, fontFamily: font.bodySemi, fontSize: 17 },
 
   tabs: {
     flexDirection: 'row',
     paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.stroke,
+    borderBottomColor: c.stroke,
   },
   tabBtn: {
     flex: 1,
@@ -327,24 +333,24 @@ const styles = StyleSheet.create({
     gap: 5, paddingVertical: 11,
     position: 'relative',
   },
-  tabLabel: { color: colors.textFaint, fontFamily: font.bodyMed, fontSize: 13 },
-  tabLabelActive: { color: colors.accent },
+  tabLabel: { color: c.textFaint, fontFamily: font.bodyMed, fontSize: 13 },
+  tabLabelActive: { color: c.accent },
   tabUnderline: {
     position: 'absolute', bottom: 0, left: 8, right: 8,
-    height: 2, backgroundColor: colors.accent, borderRadius: 1,
+    height: 2, backgroundColor: c.accent, borderRadius: 1,
   },
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: colors.glass,
+    backgroundColor: c.glass,
     borderRadius: radius.md,
     paddingHorizontal: 12, paddingVertical: 9,
     marginHorizontal: 14, marginVertical: 10,
-    borderWidth: 1, borderColor: colors.stroke,
+    borderWidth: 1, borderColor: c.stroke,
   },
   searchInput: {
     flex: 1,
-    color: colors.text,
+    color: c.text,
     fontFamily: font.body,
     fontSize: 15,
     padding: 0,
@@ -357,24 +363,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginHorizontal: 6,
   },
-  rowName: { color: colors.text, fontFamily: font.bodyMed, fontSize: 15 },
-  rowType: { color: colors.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
+  rowName: { color: c.text, fontFamily: font.bodyMed, fontSize: 15 },
+  rowType: { color: c.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
 
   checkbox: {
     width: 26, height: 26, borderRadius: 13,
-    borderWidth: 2, borderColor: colors.stroke,
+    borderWidth: 2, borderColor: c.stroke,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkboxActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxActive: { backgroundColor: c.accent, borderColor: c.accent },
 
   sendBar: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 18, paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.stroke,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.stroke,
     marginTop: 4,
   },
-  sendCount: { color: colors.text, fontFamily: font.bodySemi, fontSize: 14 },
-  sendNames: { color: colors.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
+  sendCount: { color: c.text, fontFamily: font.bodySemi, fontSize: 14 },
+  sendNames: { color: c.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
   sendBtn: {
     width: 50, height: 50,
     borderRadius: 16,
@@ -382,5 +388,5 @@ const styles = StyleSheet.create({
   },
 
   center: { height: 200, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  empty: { color: colors.textFaint, fontFamily: font.body, fontSize: 14 },
+  empty: { color: c.textFaint, fontFamily: font.body, fontSize: 14 },
 });

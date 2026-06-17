@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, font, radius } from '@/theme/theme';
+import { font, radius, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 const RECENTS_KEY = 'emoji.recents';
 const COLS = 8;
@@ -114,6 +115,8 @@ export function EmojiPicker({
   onBackspace: () => void;
   height?: number;
 }) {
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [active, setActive] = useState('smileys');
   const [recents, setRecents] = useState<string[]>([]);
 
@@ -147,13 +150,13 @@ export function EmojiPicker({
       <View style={styles.tabs}>
         {tabs.map((t) => (
           <Pressable key={t.key} onPress={() => setActive(t.key)} style={styles.tab} hitSlop={4}>
-            <Ionicons name={t.icon} size={22} color={active === t.key ? colors.accent : colors.textFaint} />
+            <Ionicons name={t.icon} size={22} color={active === t.key ? c.accent : c.textFaint} />
             {active === t.key ? <View style={styles.tabDot} /> : null}
           </Pressable>
         ))}
         <View style={{ flex: 1 }} />
         <Pressable onPress={onBackspace} style={styles.tab} hitSlop={4}>
-          <Ionicons name="backspace-outline" size={22} color={colors.textFaint} />
+          <Ionicons name="backspace-outline" size={22} color={c.textFaint} />
         </Pressable>
       </View>
 
@@ -181,25 +184,25 @@ export function EmojiPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   wrap: {
-    backgroundColor: colors.bg2,
-    borderTopWidth: 1, borderTopColor: colors.stroke,
+    backgroundColor: c.bg2,
+    borderTopWidth: 1, borderTopColor: c.stroke,
   },
   tabs: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 8, paddingTop: 6,
-    borderBottomWidth: 1, borderBottomColor: colors.stroke,
+    borderBottomWidth: 1, borderBottomColor: c.stroke,
   },
   tab: { width: 36, height: 38, alignItems: 'center', justifyContent: 'center' },
-  tabDot: { position: 'absolute', bottom: 2, width: 5, height: 5, borderRadius: 3, backgroundColor: colors.accent },
+  tabDot: { position: 'absolute', bottom: 2, width: 5, height: 5, borderRadius: 3, backgroundColor: c.accent },
   sectionLabel: {
-    color: colors.textFaint, fontFamily: font.bodySemi, fontSize: 12,
+    color: c.textFaint, fontFamily: font.bodySemi, fontSize: 12,
     letterSpacing: 1, textTransform: 'uppercase', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 2,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 6, paddingBottom: 12 },
   cell: { width: `${100 / COLS}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
-  cellPressed: { backgroundColor: colors.glass2 },
+  cellPressed: { backgroundColor: c.glass2 },
   emoji: { fontSize: 28 },
-  empty: { color: colors.textFaint, fontFamily: font.body, fontSize: 13, padding: 18, textAlign: 'center', width: '100%' },
+  empty: { color: c.textFaint, fontFamily: font.body, fontSize: 13, padding: 18, textAlign: 'center', width: '100%' },
 });

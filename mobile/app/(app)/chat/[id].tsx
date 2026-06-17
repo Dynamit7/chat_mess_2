@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
   KeyboardAvoidingView, Platform, Alert, Modal,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,12 +22,16 @@ import { ScrollToBottomButton } from '@/components/chat/ScrollToBottomButton';
 import { SelectionBar } from '@/components/ui/SelectionBar';
 import { useSelection } from '@/lib/useSelection';
 import { messagesApi, uploadFile, chatKeyOf, Message, ForwardPayload } from '@/lib/api';
+
+const PAGE_SIZE = 40;
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
-import { colors, font } from '@/theme/theme';
+import { useCall } from '@/state/call';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, Palette } from '@/theme/theme';
 import { dayLabel } from '@/lib/format';
 
 const tempId = () => `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -36,8 +41,11 @@ const fileKind = (mime = '') =>
 export default function ConversationScreen() {
   const { user } = useAuth();
   const socket = useSocket();
+  const call = useCall();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams<{ id: string; name: string; avatar: string }>();
   const me = Number(user?.userId);
   const partnerId = Number(params.id);
@@ -46,6 +54,10 @@ export default function ConversationScreen() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const cursorRef = useRef<number | null>(null); // id of the oldest loaded message
+  const loadingOlderRef = useRef(false);
   const [online, setOnline] = useState(false);
   const [typing, setTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -104,32 +116,65 @@ export default function ConversationScreen() {
     });
   }, []);
 
+  // Load an older page when the user scrolls to the top of the history.
+  // Inverted list: reaching the visual top fires onEndReached. Older messages
+  // are prepended to the chronological `messages` array (start), which keeps the
+  // scroll position stable on an inverted list.
+  const loadOlder = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMore || cursorRef.current == null) return;
+    if (!(await getIsOnline())) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const page = await messagesApi.getMessagesPage(me, partnerId, PAGE_SIZE, cursorRef.current);
+      const older = Array.isArray(page?.messages) ? page.messages : [];
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => Number(m.id)));
+        const fresh = older.filter((m) => !seen.has(Number(m.id)));
+        return fresh.length ? [...fresh, ...prev] : prev;
+      });
+      setHasMore(!!page?.hasMore);
+      cursorRef.current = page?.nextBefore ?? (older.length ? Number(older[0].id) : null);
+    } catch {
+      // keep current cursor; the user can retry by scrolling again
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [hasMore, me, partnerId]);
+
   // Load history + join room + mark read
   useEffect(() => {
     let alive = true;
     setLoading(true);
     atBottomRef.current = true;
+    cursorRef.current = null;
+    loadingOlderRef.current = false;
+    setHasMore(false);
+    setLoadingOlder(false);
     socket.emit('joinRoom', `chat_${chatKey}`);
 
-    // online → API + cache last messages; offline → read local SQLite
+    // online → API (first page) + cache; offline → read local SQLite
     (async () => {
       const key = cacheKeys.directMessages(chatKey);
       if (!(await getIsOnline())) {
         const cached = await cacheGet<Message[]>(key);
-        if (alive) { setMessages(cached || []); setLoading(false); scrollToEnd(false); }
+        if (alive) { setMessages(cached || []); setHasMore(false); setLoading(false); scrollToEnd(false); }
         return;
       }
       try {
-        const data = await messagesApi.getMessages(me, partnerId);
+        const page = await messagesApi.getMessagesPage(me, partnerId, PAGE_SIZE);
         if (!alive) return;
-        const list = Array.isArray(data) ? data : [];
+        const list = Array.isArray(page?.messages) ? page.messages : [];
         setMessages(list);
+        setHasMore(!!page?.hasMore);
+        cursorRef.current = page?.nextBefore ?? (list.length ? Number(list[0].id) : null);
         setLoading(false);
         scrollToEnd(false);
         cacheSet(key, list.slice(-50)); // keep most recent messages for offline
       } catch {
         const cached = await cacheGet<Message[]>(key);
-        if (alive) { if (cached) setMessages(cached); setLoading(false); scrollToEnd(false); }
+        if (alive) { if (cached) setMessages(cached); setHasMore(false); setLoading(false); scrollToEnd(false); }
       }
     })();
 
@@ -349,6 +394,18 @@ export default function ConversationScreen() {
 
   const emitTyping = (isTyping: boolean) => socket.emit('typing', { userId: me, chatId: chatKey, isTyping });
 
+  const placeCall = async (video: boolean) => {
+    if (!call.available) {
+      Alert.alert('Звонки недоступны', 'Звонки работают только в установленном приложении (не в Expo Go). Соберите dev-build.');
+      return;
+    }
+    await call.startCall({ id: partnerId, name: partnerName, avatar: params.avatar || '' }, { video });
+    router.push({
+      pathname: '/(app)/call/[id]',
+      params: { id: String(partnerId), name: partnerName, avatar: params.avatar || '', video: video ? 'true' : 'false' },
+    });
+  };
+
   const visible = messages.filter((m) => !m.isDeleted);
   // Inverted list renders newest-first, so the latest message is at the bottom
   // with no scrolling on entry. Reverse a copy for display only.
@@ -402,13 +459,15 @@ export default function ConversationScreen() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {/* Header */}
       {sel.active ? (
         <SelectionBar
           count={sel.count}
           total={selectableIds.length}
           paddingTop={insets.top}
+          palette={c}
           onClose={sel.exit}
           onSelectAll={() => sel.selectAll(selectableIds)}
           extraActions={[
@@ -420,26 +479,26 @@ export default function ConversationScreen() {
       ) : (
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable hitSlop={8} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(app)/(tabs)'))} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={26} color={colors.text} />
+          <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Pressable
           hitSlop={4}
           style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
           onPress={() => router.push({ pathname: '/(app)/user/[id]', params: { id: String(partnerId), name: partnerName, avatar: params.avatar || '' } })}
         >
-          <Avatar name={partnerName} src={params.avatar} size={42} online={online} />
+          <Avatar name={partnerName} src={params.avatar} size={42} online={online} palette={c} />
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={styles.headerName}>{partnerName}</Text>
-            <Text style={[styles.headerStatus, (typing || online) && { color: typing ? colors.accent : colors.online }]}>
+            <Text style={[styles.headerStatus, (typing || online) && { color: typing ? c.accent : c.online }]}>
               {typing ? 'typing…' : online ? 'online' : 'offline'}
             </Text>
           </View>
         </Pressable>
-        <Pressable hitSlop={8} onPress={() => router.push({ pathname: '/(app)/call/[id]', params: { id: String(partnerId), name: partnerName, avatar: params.avatar || '', incoming: 'false' } })} style={styles.headerBtn}>
-          <Ionicons name="call-outline" size={21} color={colors.text} />
+        <Pressable hitSlop={8} onPress={() => placeCall(false)} style={styles.headerBtn}>
+          <Ionicons name="call-outline" size={21} color={c.text} />
         </Pressable>
-        <Pressable hitSlop={8} onPress={() => router.push({ pathname: '/(app)/call/[id]', params: { id: String(partnerId), name: partnerName, avatar: params.avatar || '', incoming: 'false' } })} style={styles.headerBtn}>
-          <Ionicons name="videocam-outline" size={22} color={colors.text} />
+        <Pressable hitSlop={8} onPress={() => placeCall(true)} style={styles.headerBtn}>
+          <Ionicons name="videocam-outline" size={22} color={c.text} />
         </Pressable>
       </View>
       )}
@@ -452,7 +511,7 @@ export default function ConversationScreen() {
         style={{ flex: 1 }}
       >
         {loading ? (
-          <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+          <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
         ) : visible.length === 0 ? (
           <View style={styles.center}>
             <Text style={styles.emptyTitle}>Say hello 👋</Text>
@@ -468,6 +527,13 @@ export default function ConversationScreen() {
             showsVerticalScrollIndicator={false}
             onScroll={onScroll}
             scrollEventThrottle={16}
+            onEndReached={loadOlder}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={
+              loadingOlder ? (
+                <View style={styles.olderLoader}><ActivityIndicator size="small" color={c.accent} /></View>
+              ) : null
+            }
             renderItem={({ item, index }) => {
               // data is newest-first, so the chronologically older message is next in the array.
               const prev = data[index + 1];
@@ -486,6 +552,7 @@ export default function ConversationScreen() {
                     isOut={isOut}
                     grouped={grouped}
                     me={me}
+                    palette={c}
                     myUsername={user?.username}
                     onLongPress={setSheetMsg}
                     onImagePress={setLightbox}
@@ -506,7 +573,7 @@ export default function ConversationScreen() {
 
         {typing ? (
           <View style={styles.typingRow}>
-            <Avatar name={partnerName} src={params.avatar} size={26} />
+            <Avatar name={partnerName} src={params.avatar} size={26} palette={c} />
             <View style={styles.typingBubble}>
               <Text style={styles.typingDots}>•••</Text>
             </View>
@@ -515,7 +582,7 @@ export default function ConversationScreen() {
 
         {uploadPct !== null ? (
           <View style={styles.uploadChip}>
-            <ActivityIndicator size="small" color={colors.accent} />
+            <ActivityIndicator size="small" color={c.accent} />
             <Text style={styles.uploadText}>Uploading…</Text>
           </View>
         ) : null}
@@ -579,27 +646,28 @@ export default function ConversationScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.stroke,
+    borderBottomWidth: 1, borderBottomColor: c.stroke,
   },
   headerBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  headerName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
-  headerStatus: { color: colors.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
+  headerName: { color: c.text, fontFamily: font.bodySemi, fontSize: 17 },
+  headerStatus: { color: c.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 8 },
-  emptyTitle: { color: colors.text, fontFamily: font.display, fontSize: 22 },
-  emptyBody: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
+  emptyTitle: { color: c.text, fontFamily: font.display, fontSize: 22 },
+  emptyBody: { color: c.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
+  olderLoader: { paddingVertical: 14, alignItems: 'center' },
   daySep: { alignItems: 'center', marginVertical: 12 },
   dayText: {
-    color: colors.textDim, fontFamily: font.bodyMed, fontSize: 12, backgroundColor: colors.glass2,
+    color: c.textDim, fontFamily: font.bodyMed, fontSize: 12, backgroundColor: c.glass2,
     paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden',
   },
   typingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 4 },
-  typingBubble: { backgroundColor: colors.bubbleIn, borderWidth: 1, borderColor: colors.stroke, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
-  typingDots: { color: colors.textDim, fontSize: 16, letterSpacing: 2 },
-  uploadChip: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', backgroundColor: colors.glass2, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, marginBottom: 4 },
-  uploadText: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 13 },
+  typingBubble: { backgroundColor: c.bubbleIn, borderWidth: 1, borderColor: c.stroke, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
+  typingDots: { color: c.textDim, fontSize: 16, letterSpacing: 2 },
+  uploadChip: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', backgroundColor: c.glass2, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, marginBottom: 4 },
+  uploadText: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 13 },
   lightbox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', alignItems: 'center', justifyContent: 'center' },
   lightboxImg: { width: '100%', height: '80%' },
   lightboxClose: { position: 'absolute', right: 18 },

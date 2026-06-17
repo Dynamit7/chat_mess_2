@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,10 +26,12 @@ import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
-import { colors, font } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, Palette } from '@/theme/theme';
 import { dayLabel } from '@/lib/format';
 import { fixFileUrl } from '@/lib/config';
 
+const PAGE_SIZE = 40;
 const tempId = () => `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 const fileKind = (mime = '') =>
   mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
@@ -40,6 +43,8 @@ export default function GroupConversation() {
   const socket = useSocket();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams<{ id: string; name: string; avatar: string; ownerId: string; isMember: string }>();
   const me = Number(user?.userId);
   const groupId = Number(params.id);
@@ -48,6 +53,10 @@ export default function GroupConversation() {
 
   const [messages, setMessages] = useState<GMsg[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const cursorRef = useRef<number | null>(null); // id of the oldest loaded message
+  const loadingOlderRef = useRef(false);
   const [members, setMembers] = useState<any[]>([]);
   const [member, setMember] = useState(params.isMember !== 'false');
   const [joining, setJoining] = useState(false);
@@ -100,33 +109,65 @@ export default function GroupConversation() {
     });
   }, [me]);
 
+  // Load an older page when the user scrolls to the top of the history.
+  // Inverted list: older messages are prepended to the chronological `messages`
+  // array, which keeps the scroll position stable.
+  const loadOlder = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMore || cursorRef.current == null) return;
+    if (!(await getIsOnline())) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const { buffer, hasMore: more, nextBefore } = await groupsApi.messagesRawPage(groupId, me, PAGE_SIZE, cursorRef.current);
+      const older = decodeGroupMessageList(buffer) as GMsg[];
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => Number(m.id)));
+        const fresh = older.filter((m) => !seen.has(Number(m.id)));
+        return fresh.length ? [...fresh, ...prev] : prev;
+      });
+      setHasMore(!!more);
+      cursorRef.current = nextBefore ?? (older.length ? Number(older[0].id) : null);
+    } catch {
+      // keep cursor; user can retry by scrolling again
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [hasMore, groupId, me]);
+
   // Load history + join room
   useEffect(() => {
     if (!member) { setLoading(false); return; }
     let alive = true;
     setLoading(true);
     atBottomRef.current = true;
+    cursorRef.current = null;
+    loadingOlderRef.current = false;
+    setHasMore(false);
+    setLoadingOlder(false);
     socket.emit('joinGroup', { groupId, userId: me });
     socket.emit('joinRoom', `group_${groupId}`);
-    // online → API + cache; offline → read local SQLite
+    // online → API (first page) + cache; offline → read local SQLite
     (async () => {
       const key = cacheKeys.groupMessages(groupId);
       if (!(await getIsOnline())) {
         const cached = await cacheGet<GMsg[]>(key);
-        if (alive) { setMessages(cached || []); setLoading(false); scrollToEnd(false); }
+        if (alive) { setMessages(cached || []); setHasMore(false); setLoading(false); scrollToEnd(false); }
         return;
       }
       try {
-        const buf = await groupsApi.messagesRaw(groupId, me);
+        const { buffer, hasMore: more, nextBefore } = await groupsApi.messagesRawPage(groupId, me, PAGE_SIZE);
         if (!alive) return;
-        const list = decodeGroupMessageList(buf);
+        const list = decodeGroupMessageList(buffer) as GMsg[];
         setMessages(list);
+        setHasMore(!!more);
+        cursorRef.current = nextBefore ?? (list.length ? Number(list[0].id) : null);
         setLoading(false);
         scrollToEnd(false);
         cacheSet(key, list.slice(-50));
       } catch {
         const cached = await cacheGet<GMsg[]>(key);
-        if (alive) { if (cached) setMessages(cached); setLoading(false); scrollToEnd(false); }
+        if (alive) { if (cached) setMessages(cached); setHasMore(false); setLoading(false); scrollToEnd(false); }
       }
     })();
     groupsApi.members(groupId).then((m) => alive && setMembers(m || [])).catch(() => {});
@@ -377,12 +418,14 @@ export default function GroupConversation() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {sel.active ? (
         <SelectionBar
           count={sel.count}
           total={selectableIds.length}
           paddingTop={insets.top}
+          palette={c}
           onClose={sel.exit}
           onSelectAll={() => sel.selectAll(selectableIds)}
           extraActions={[
@@ -394,17 +437,17 @@ export default function GroupConversation() {
       ) : (
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable hitSlop={8} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(app)/(tabs)/groups'))} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={26} color={colors.text} />
+          <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Pressable
           hitSlop={4}
           style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
           onPress={() => router.push({ pathname: '/(app)/group-info/[id]', params: { id: String(groupId), name: groupName, avatar: groupAvatar, isMember: String(!!member) } })}
         >
-          <Avatar name={groupName} src={groupAvatar} size={42} />
+          <Avatar name={groupName} src={groupAvatar} size={42} palette={c} />
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={styles.headerName}>{groupName}</Text>
-            <Text numberOfLines={1} style={[styles.headerStatus, typingNames.length > 0 && { color: colors.accent }]}>
+            <Text numberOfLines={1} style={[styles.headerStatus, typingNames.length > 0 && { color: c.accent }]}>
               {typingNames.length ? `${typingNames.slice(0, 2).join(', ')} typing…` : `${members.length || ''} member${members.length === 1 ? '' : 's'}`}
             </Text>
           </View>
@@ -414,16 +457,16 @@ export default function GroupConversation() {
 
       {!member ? (
         <View style={styles.joinWrap}>
-          <Avatar name={groupName} src={groupAvatar} size={96} ring />
+          <Avatar name={groupName} src={groupAvatar} size={96} ring palette={c} />
           <Text style={styles.joinTitle}>{groupName}</Text>
           <Text style={styles.joinBody}>Join this group to see messages and participate.</Text>
-          <Button label="Join group" onPress={join} loading={joining} style={{ marginTop: 18, minWidth: 200 }} />
+          <Button label="Join group" onPress={join} loading={joining} style={{ marginTop: 18, minWidth: 200 }} palette={c} />
         </View>
       ) : (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <OfflineBanner />
           {loading ? (
-            <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+            <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
           ) : visible.length === 0 ? (
             <View style={styles.center}><Text style={styles.empty}>No messages yet. Say hello! 👋</Text></View>
           ) : (
@@ -436,6 +479,9 @@ export default function GroupConversation() {
               showsVerticalScrollIndicator={false}
               onScroll={onScroll}
               scrollEventThrottle={16}
+              onEndReached={loadOlder}
+              onEndReachedThreshold={0.4}
+              ListFooterComponent={loadingOlder ? <View style={styles.olderLoader}><ActivityIndicator size="small" color={c.accent} /></View> : null}
               renderItem={({ item, index }) => {
                 // data is newest-first, so the chronologically older message is next in the array.
                 const prev = data[index + 1];
@@ -452,6 +498,7 @@ export default function GroupConversation() {
                       isOut={isOut}
                       grouped={grouped}
                       me={me}
+                      palette={c}
                       myUsername={user?.username}
                       senderName={!isOut && !grouped ? item.sender?.username : undefined}
                       onLongPress={(mm) => setSheetMsg(mm)}
@@ -539,20 +586,21 @@ export default function GroupConversation() {
   );
 }
 
-const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.stroke },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.stroke },
   headerBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  headerName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
-  headerStatus: { color: colors.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
+  headerName: { color: c.text, fontFamily: font.bodySemi, fontSize: 17 },
+  headerStatus: { color: c.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
-  empty: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
+  empty: { color: c.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
   joinWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 10 },
-  joinTitle: { color: colors.text, fontFamily: font.display, fontSize: 24, marginTop: 14 },
-  joinBody: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  joinTitle: { color: c.text, fontFamily: font.display, fontSize: 24, marginTop: 14 },
+  joinBody: { color: c.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  olderLoader: { paddingVertical: 14, alignItems: 'center' },
   daySep: { alignItems: 'center', marginVertical: 12 },
-  dayText: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 12, backgroundColor: colors.glass2, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' },
+  dayText: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 12, backgroundColor: c.glass2, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' },
   typingRow: { paddingHorizontal: 18, paddingBottom: 4 },
-  typingText: { color: colors.accent, fontFamily: font.bodyMed, fontSize: 12.5 },
+  typingText: { color: c.accent, fontFamily: font.bodyMed, fontSize: 12.5 },
   lightbox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', alignItems: 'center', justifyContent: 'center' },
   lightboxImg: { width: '100%', height: '80%' },
   lightboxClose: { position: 'absolute', right: 18 },

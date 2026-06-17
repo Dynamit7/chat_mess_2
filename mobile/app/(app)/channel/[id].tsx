@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform,
   TextInput, Alert, Modal,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,11 +22,13 @@ import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
-import { colors, font, gradients, radius, shadow } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, gradients, radius, shadow, Palette } from '@/theme/theme';
 import { timeOf, relativeShort } from '@/lib/format';
 import { fixFileUrl } from '@/lib/config';
 
 const QUICK = ['❤️', '🔥', '👍', '😂', '😮', '🙏'];
+const PAGE_SIZE = 40;
 
 type Post = any;
 type RMap = Record<number, Record<string, { count: number; users: number[] }>>;
@@ -35,6 +38,8 @@ export default function ChannelFeed() {
   const socket = useSocket();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams<{ id: string; name: string; avatar: string; ownerId: string; isMember: string; members: string }>();
   const me = Number(user?.userId);
   const channelId = Number(params.id);
@@ -45,6 +50,10 @@ export default function ChannelFeed() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [reactions, setReactions] = useState<RMap>({});
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const cursorRef = useRef<number | null>(null); // id of the oldest loaded post
+  const loadingOlderRef = useRef(false);
   const [member, setMember] = useState(params.isMember !== 'false');
   const [joining, setJoining] = useState(false);
   const [text, setText] = useState('');
@@ -77,31 +86,69 @@ export default function ChannelFeed() {
     draftTimer.current = setTimeout(() => writeDraft(draftKey, v), 350);
   };
 
+  // Fetch reaction maps for a batch of posts and merge them into state.
+  const loadReactions = useCallback((batch: Post[], alive: () => boolean = () => true) =>
+    Promise.all(batch.map((p: Post) => channelsApi.reactions(p.id).then((r: any) => [p.id, r]).catch(() => [p.id, {}])))
+      .then((pairs) => { if (alive()) setReactions((prev) => ({ ...Object.fromEntries(pairs), ...prev })); }), []);
+
+  // Load an older page when the user scrolls to the top of the feed. Inverted
+  // list: older posts are prepended to the chronological `posts` array, keeping
+  // the scroll position stable.
+  const loadOlder = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMore || cursorRef.current == null) return;
+    if (!(await getIsOnline())) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const page = await channelsApi.messagesPage(channelId, PAGE_SIZE, cursorRef.current);
+      const older = Array.isArray(page?.messages) ? page.messages : [];
+      let fresh: Post[] = [];
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p) => Number(p.id)));
+        fresh = older.filter((p) => !seen.has(Number(p.id)));
+        return fresh.length ? [...fresh, ...prev] : prev;
+      });
+      setHasMore(!!page?.hasMore);
+      cursorRef.current = page?.nextBefore ?? (older.length ? Number(older[0].id) : null);
+      if (fresh.length) loadReactions(fresh);
+    } catch {
+      // keep cursor; user can retry by scrolling again
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [hasMore, channelId, loadReactions]);
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    cursorRef.current = null;
+    loadingOlderRef.current = false;
+    setHasMore(false);
+    setLoadingOlder(false);
     socket.emit('joinChannel', { channelId, userId: me });
     socket.emit('joinRoom', `channel_${channelId}`);
-    // online → API + cache; offline → read local SQLite
+    // online → API (first page) + cache; offline → read local SQLite
     (async () => {
       const key = cacheKeys.channelMessages(channelId);
       if (!(await getIsOnline())) {
         const cached = await cacheGet<Post[]>(key);
-        if (alive) { setPosts(cached || []); setLoading(false); }
+        if (alive) { setPosts(cached || []); setHasMore(false); setLoading(false); }
         return;
       }
       try {
-        const list = await channelsApi.messages(channelId);
+        const page = await channelsApi.messagesPage(channelId, PAGE_SIZE);
         if (!alive) return;
-        const arr = Array.isArray(list) ? list : [];
+        const arr = Array.isArray(page?.messages) ? page.messages : [];
         setPosts(arr);
+        setHasMore(!!page?.hasMore);
+        cursorRef.current = page?.nextBefore ?? (arr.length ? Number(arr[0].id) : null);
         setLoading(false);
         cacheSet(key, arr.slice(-50));
-        const pairs = await Promise.all(arr.map((p: Post) => channelsApi.reactions(p.id).then((r: any) => [p.id, r]).catch(() => [p.id, {}])));
-        if (alive) setReactions(Object.fromEntries(pairs));
+        loadReactions(arr, () => alive);
       } catch {
         const cached = await cacheGet<Post[]>(key);
-        if (alive) { if (cached) setPosts(cached); setLoading(false); }
+        if (alive) { if (cached) setPosts(cached); setHasMore(false); setLoading(false); }
       }
     })();
     channelsApi.updateLastSeen(channelId, me).catch(() => {});
@@ -233,16 +280,16 @@ export default function ChannelFeed() {
         <View style={styles.cardHead}>
           {sel.active ? (
             <View style={[styles.checkbox, selected && styles.checkboxOn]}>
-              {selected ? <Ionicons name="checkmark" size={14} color={colors.ink} /> : null}
+              {selected ? <Ionicons name="checkmark" size={14} color={c.ink} /> : null}
             </View>
           ) : null}
-          <Avatar name={p.sender?.username || channelName} src={p.sender?.avatar || params.avatar} size={36} />
+          <Avatar name={p.sender?.username || channelName} src={p.sender?.avatar || params.avatar} size={36} palette={c} />
           <View style={{ flex: 1 }}>
             <Text style={styles.cardName}>{channelName}</Text>
             <Text style={styles.cardTime}>{relativeShort(p.createdAt)} · {timeOf(p.createdAt)}</Text>
           </View>
           {canManage && !sel.active ? (
-            <Pressable hitSlop={8} onPress={() => deletePost(p)}><Ionicons name="ellipsis-horizontal" size={18} color={colors.textFaint} /></Pressable>
+            <Pressable hitSlop={8} onPress={() => deletePost(p)}><Ionicons name="ellipsis-horizontal" size={18} color={c.textFaint} /></Pressable>
           ) : null}
         </View>
 
@@ -260,7 +307,7 @@ export default function ChannelFeed() {
               return (
                 <Pressable key={emoji} onPress={() => react(p, emoji)} style={[styles.reactionChip, mine && styles.reactionChipMine]}>
                   <Text style={styles.reactionEmoji}>{emoji}</Text>
-                  <Text style={[styles.reactionCount, mine && { color: colors.accent }]}>{info.count}</Text>
+                  <Text style={[styles.reactionCount, mine && { color: c.accent }]}>{info.count}</Text>
                 </Pressable>
               );
             })}
@@ -269,11 +316,11 @@ export default function ChannelFeed() {
 
         <View style={styles.cardFooter}>
           <Pressable style={styles.footBtn} onPress={() => openReactPicker(p)} hitSlop={6}>
-            <Ionicons name="heart-outline" size={19} color={colors.textDim} />
+            <Ionicons name="heart-outline" size={19} color={c.textDim} />
             <Text style={styles.footText}>React</Text>
           </Pressable>
           <Pressable style={styles.footBtn} onPress={() => setCommentsFor(p)} hitSlop={6}>
-            <Ionicons name="chatbubble-outline" size={18} color={colors.textDim} />
+            <Ionicons name="chatbubble-outline" size={18} color={c.textDim} />
             <Text style={styles.footText}>{p.commentsCount ? `${p.commentsCount}` : 'Comment'}</Text>
           </Pressable>
         </View>
@@ -282,12 +329,14 @@ export default function ChannelFeed() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {sel.active ? (
         <SelectionBar
           count={sel.count}
           total={selectableIds.length}
           paddingTop={insets.top}
+          palette={c}
           onClose={sel.exit}
           onSelectAll={() => sel.selectAll(selectableIds)}
           onDelete={deleteSelected}
@@ -296,14 +345,14 @@ export default function ChannelFeed() {
       ) : (
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable hitSlop={8} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(app)/(tabs)/channels'))} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={26} color={colors.text} />
+          <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Pressable
           hitSlop={4}
           style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
           onPress={() => router.push({ pathname: '/(app)/channel-info/[id]', params: { id: String(channelId), name: channelName, avatar: channelAvatar, isMember: params.isMember || 'true', members: params.members || '0' } })}
         >
-          <Avatar name={channelName} src={channelAvatar} size={42} />
+          <Avatar name={channelName} src={channelAvatar} size={42} palette={c} />
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={styles.headerName}>{channelName}</Text>
             <Text style={styles.headerStatus}>{params.members || 0} subscribers · Channel</Text>
@@ -315,9 +364,9 @@ export default function ChannelFeed() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <OfflineBanner />
         {loading ? (
-          <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+          <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
         ) : posts.length === 0 ? (
-          <View style={styles.center}><Ionicons name="megaphone-outline" size={42} color={colors.textFaint} /><Text style={styles.empty}>No posts yet.</Text></View>
+          <View style={styles.center}><Ionicons name="megaphone-outline" size={42} color={c.textFaint} /><Text style={styles.empty}>No posts yet.</Text></View>
         ) : (
           <FlatList
             ref={listRef}
@@ -327,31 +376,34 @@ export default function ChannelFeed() {
             renderItem={renderPost}
             contentContainerStyle={{ padding: 14, paddingBottom: 20 }}
             showsVerticalScrollIndicator={false}
+            onEndReached={loadOlder}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={loadingOlder ? <View style={styles.olderLoader}><ActivityIndicator size="small" color={c.accent} /></View> : null}
           />
         )}
 
         <View style={{ paddingBottom: insets.bottom + 8, paddingHorizontal: 12, paddingTop: 8 }}>
           {!member ? (
-            <Button label="Подписаться" onPress={join} loading={joining} />
+            <Button label="Подписаться" onPress={join} loading={joining} palette={c} />
           ) : canManage ? (
             <View style={styles.composer}>
-              <Pressable onPress={publishImage} hitSlop={6} style={styles.composerIcon}><Ionicons name="image-outline" size={22} color={colors.accent} /></Pressable>
+              <Pressable onPress={publishImage} hitSlop={6} style={styles.composerIcon}><Ionicons name="image-outline" size={22} color={c.accent} /></Pressable>
               <TextInput
                 value={text}
                 onChangeText={onChangeText}
                 placeholder="Share something…"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={c.textFaint}
                 style={styles.composerInput}
                 multiline
               />
               <Pressable onPress={publish} disabled={posting || !text.trim()} style={{ opacity: text.trim() ? 1 : 0.4 }}>
                 <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.send}>
-                  <Ionicons name="arrow-up" size={22} color={colors.ink} />
+                  <Ionicons name="arrow-up" size={22} color={c.ink} />
                 </LinearGradient>
               </Pressable>
             </View>
           ) : (
-            <View style={styles.readonly}><Ionicons name="megaphone-outline" size={15} color={colors.textFaint} /><Text style={styles.readonlyText}>Only the channel owner can post here</Text></View>
+            <View style={styles.readonly}><Ionicons name="megaphone-outline" size={15} color={c.textFaint} /><Text style={styles.readonlyText}>Only the channel owner can post here</Text></View>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -376,6 +428,8 @@ export default function ChannelFeed() {
 function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { channelId: number; post: any; canManage: boolean; me: number; onClose: () => void; onAdded: (postId: number) => void }) {
   const insets = useSafeAreaInsets();
   const socket = useSocket();
+  const { c: pal } = useTheme();
+  const styles = useMemo(() => makeStyles(pal), [pal]);
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -425,7 +479,7 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
     const canDelete = canManage || Number(c.sender?.id ?? c.userId) === me;
     return (
       <View style={styles.comment}>
-        <Avatar name={c.sender?.username || c.username} src={c.sender?.avatar} size={34} />
+        <Avatar name={c.sender?.username || c.username} src={c.sender?.avatar} size={34} palette={pal} />
         <View style={{ flex: 1 }}>
           <Text style={styles.commentName}>{c.sender?.username || c.username || 'User'}</Text>
           <Text style={styles.commentText}>{c.text}</Text>
@@ -433,8 +487,8 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
         {canDelete && (
           <Pressable hitSlop={10} onPress={() => deleteComment(cId)} disabled={isDeleting} style={styles.commentDel}>
             {isDeleting
-              ? <ActivityIndicator size="small" color={colors.danger} />
-              : <Ionicons name="trash-outline" size={16} color={colors.danger} />
+              ? <ActivityIndicator size="small" color={pal.danger} />
+              : <Ionicons name="trash-outline" size={16} color={pal.danger} />
             }
           </Pressable>
         )}
@@ -449,7 +503,7 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
         <View style={styles.sheetHandle} />
         <Text style={styles.sheetTitle}>Комментарии</Text>
         {loading ? (
-          <View style={{ padding: 30 }}><ActivityIndicator color={colors.accent} /></View>
+          <View style={{ padding: 30 }}><ActivityIndicator color={pal.accent} /></View>
         ) : comments.length === 0 ? (
           <Text style={styles.noComments}>Комментариев пока нет. Будьте первым.</Text>
         ) : (
@@ -461,10 +515,10 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
           />
         )}
         <View style={styles.commentComposer}>
-          <TextInput value={text} onChangeText={setText} placeholder="Написать комментарий…" placeholderTextColor={colors.textFaint} style={styles.commentInput} multiline />
+          <TextInput value={text} onChangeText={setText} placeholder="Написать комментарий…" placeholderTextColor={pal.textFaint} style={styles.commentInput} multiline />
           <Pressable onPress={add} disabled={sending || !text.trim()} style={{ opacity: text.trim() ? 1 : 0.4 }}>
             <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.send}>
-              <Ionicons name="arrow-up" size={20} color={colors.ink} />
+              <Ionicons name="arrow-up" size={20} color={pal.ink} />
             </LinearGradient>
           </Pressable>
         </View>
@@ -473,51 +527,52 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
   );
 }
 
-const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.stroke },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.stroke },
   headerBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  headerName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
-  headerStatus: { color: colors.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
+  headerName: { color: c.text, fontFamily: font.bodySemi, fontSize: 17 },
+  headerStatus: { color: c.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 40 },
-  empty: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
-  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.stroke, borderRadius: radius.xl, padding: 16, marginBottom: 12 },
-  cardSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  olderLoader: { paddingVertical: 14, alignItems: 'center' },
+  empty: { color: c.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center' },
+  card: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.stroke, borderRadius: radius.xl, padding: 16, marginBottom: 12 },
+  cardSelected: { borderColor: c.accent, backgroundColor: c.accentSoft },
   checkbox: {
-    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.stroke2,
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.stroke2,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxOn: { backgroundColor: c.accent, borderColor: c.accent },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  cardName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 15 },
-  cardTime: { color: colors.textFaint, fontFamily: font.mono, fontSize: 11, marginTop: 1 },
-  cardImage: { width: '100%', height: 240, borderRadius: radius.md, backgroundColor: colors.glass2, marginBottom: 10 },
-  cardText: { color: colors.text, fontFamily: font.body, fontSize: 15.5, lineHeight: 22 },
+  cardName: { color: c.text, fontFamily: font.bodySemi, fontSize: 15 },
+  cardTime: { color: c.textFaint, fontFamily: font.mono, fontSize: 11, marginTop: 1 },
+  cardImage: { width: '100%', height: 240, borderRadius: radius.md, backgroundColor: c.glass2, marginBottom: 10 },
+  cardText: { color: c.text, fontFamily: font.body, fontSize: 15.5, lineHeight: 22 },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
-  reactionChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, backgroundColor: colors.glass2, borderRadius: radius.full, borderWidth: 1, borderColor: colors.stroke },
-  reactionChipMine: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  reactionChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, backgroundColor: c.glass2, borderRadius: radius.full, borderWidth: 1, borderColor: c.stroke },
+  reactionChipMine: { backgroundColor: c.accentSoft, borderColor: c.accent },
   reactionEmoji: { fontSize: 13 },
-  reactionCount: { color: colors.textDim, fontFamily: font.bodySemi, fontSize: 12 },
-  cardFooter: { flexDirection: 'row', gap: 22, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.stroke },
+  reactionCount: { color: c.textDim, fontFamily: font.bodySemi, fontSize: 12 },
+  cardFooter: { flexDirection: 'row', gap: 22, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.stroke },
   footBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  footText: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 13.5 },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.stroke, borderRadius: radius.lg, paddingHorizontal: 8, paddingVertical: 6 },
+  footText: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 13.5 },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: radius.lg, paddingHorizontal: 8, paddingVertical: 6 },
   composerIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  composerInput: { flex: 1, color: colors.text, fontFamily: font.body, fontSize: 16, maxHeight: 120, paddingVertical: 8 },
+  composerInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 16, maxHeight: 120, paddingVertical: 8 },
   send: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   readonly: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
-  readonlyText: { color: colors.textFaint, fontFamily: font.body, fontSize: 13 },
+  readonlyText: { color: c.textFaint, fontFamily: font.body, fontSize: 13 },
   lightbox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', alignItems: 'center', justifyContent: 'center' },
   lightboxImg: { width: '100%', height: '80%' },
   lightboxClose: { position: 'absolute', right: 18 },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: { backgroundColor: colors.bg2, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: colors.stroke, paddingHorizontal: 16, paddingTop: 10 },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.stroke2, marginBottom: 12 },
-  sheetTitle: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17, marginBottom: 10 },
-  noComments: { color: colors.textFaint, fontFamily: font.body, fontSize: 14, textAlign: 'center', paddingVertical: 26 },
+  sheet: { backgroundColor: c.bg2, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: c.stroke, paddingHorizontal: 16, paddingTop: 10 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.stroke2, marginBottom: 12 },
+  sheetTitle: { color: c.text, fontFamily: font.bodySemi, fontSize: 17, marginBottom: 10 },
+  noComments: { color: c.textFaint, fontFamily: font.body, fontSize: 14, textAlign: 'center', paddingVertical: 26 },
   comment: { flexDirection: 'row', gap: 10, paddingVertical: 9, alignItems: 'center' },
-  commentName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 13.5 },
-  commentText: { color: colors.textDim, fontFamily: font.body, fontSize: 14, marginTop: 2, lineHeight: 20 },
+  commentName: { color: c.text, fontFamily: font.bodySemi, fontSize: 13.5 },
+  commentText: { color: c.textDim, fontFamily: font.body, fontSize: 14, marginTop: 2, lineHeight: 20 },
   commentDel: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.stroke, marginTop: 6 },
-  commentInput: { flex: 1, color: colors.text, fontFamily: font.body, fontSize: 15, maxHeight: 100, backgroundColor: colors.glass, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: colors.stroke },
+  commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.stroke, marginTop: 6 },
+  commentInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 15, maxHeight: 100, backgroundColor: c.glass, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: c.stroke },
 });

@@ -172,6 +172,9 @@ app.use(cors({
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
+  // Пагинация бинарных (protobuf) сообщений групп отдаёт курсор в заголовках —
+  // браузерному клиенту их надо явно разрешить читать.
+  exposedHeaders: ["X-Has-More", "X-Next-Before"],
 }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
@@ -551,9 +554,9 @@ socket.on("typing", async ({ userId, chatId, isTyping, groupId }) => {
     }
   });
 
-  socket.on("callUser", ({ to, callerId, callerName, callerPicture }) => {
+  socket.on("callUser", ({ to, callerId, callerName, callerPicture, video }) => {
     if (resolveActor(socket, callerId) === null) return;
-    io.to(`user_${to}`).emit("incomingCall", { callerId, callerName, callerPicture });
+    io.to(`user_${to}`).emit("incomingCall", { callerId, callerName, callerPicture, video: !!video });
   });
 
   socket.on("acceptCall", ({ to }) => {

@@ -4,6 +4,8 @@ import {
   Pressable, Text, Alert, TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
@@ -18,14 +20,20 @@ import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useAuth } from '@/state/auth';
+import { useT } from '@/i18n';
+import { useTheme } from '@/theme/ThemeContext';
 import { useSocket } from '@/state/socket';
-import { colors, font, radius } from '@/theme/theme';
+import { font, radius, Palette } from '@/theme/theme';
 
 export default function ChatsScreen() {
   const { user } = useAuth();
   const socket = useSocket();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useT();
+  const { c, scheme } = useTheme();
+  const isFocused = useIsFocused();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const me = Number(user?.userId);
 
   const [chats, setChats] = useState<ChatSummary[]>([]);
@@ -86,7 +94,10 @@ export default function ChatsScreen() {
     } finally { setLoading(false); setRefreshing(false); }
   }, [me]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reload whenever the tab regains focus so the list reconciles with the
+  // server after actions taken elsewhere (e.g. forwarding a reel from the Reels
+  // tab). load() doesn't toggle the spinner, so this refresh is silent.
+  useEffect(() => { if (isFocused) load(); }, [load, isFocused]);
 
   // ── realtime socket listeners ────────────────────────────
   useEffect(() => {
@@ -100,9 +111,13 @@ export default function ChatsScreen() {
       }
       // only overwrite lastMessage if the event carried a message (send event, not delete event)
       if (lastMessage !== undefined) {
-        patch.lastMessage = typeof lastMessage === 'object' ? (lastMessage?.text ?? '') : lastMessage;
-        patch.lastMessageType = (typeof lastMessage === 'object' ? lastMessage?.type : undefined) || 'text';
-        patch.time = (typeof lastMessage === 'object' ? lastMessage?.createdAt : undefined) || new Date().toISOString();
+        const isObj = typeof lastMessage === 'object' && lastMessage !== null;
+        patch.lastMessage = isObj ? (lastMessage?.text ?? '') : lastMessage;
+        patch.lastMessageType = (isObj ? lastMessage?.type : undefined) || 'text';
+        patch.time = (isObj ? lastMessage?.createdAt : undefined) || new Date().toISOString();
+        // keep the forward arrow in sync with the new message (clears a stale
+        // arrow left over from a previously forwarded reel)
+        if (isObj) patch.isForwarded = !!(lastMessage.forwardedFromType || lastMessage.isForwarded);
       }
       if (unreadCount !== undefined) patch.unreadCount = unreadCount;
       upsert(partnerId, patch, lastMessage !== undefined);
@@ -137,6 +152,19 @@ export default function ChatsScreen() {
       const ids = new Set((partnerIds || []).map(Number));
       setChats((prev) => prev.filter((c) => !ids.has(Number(c.partnerId))));
     };
+    // A partner changed their name/avatar — reflect it in their chat row live.
+    const onProfileUpdated = ({ userId, username, nickname, avatar }: any) => {
+      if (Number(userId) === me) return;
+      const patch: Partial<ChatSummary> = {};
+      const name = username || nickname;
+      if (name) patch.username = name;
+      if (avatar !== undefined) patch.picture = avatar ?? undefined;
+      if (Object.keys(patch).length) upsert(Number(userId), patch, false);
+    };
+
+    // After a reconnect we may have missed lastMessageUpdated/chatUpdated events
+    // while offline — pull a fresh snapshot so the list can't stay frozen.
+    const onReconnect = () => load();
 
     socket.on('chatUpdated', onChatUpdated);
     socket.on('lastMessageUpdated', onLastMessage);
@@ -145,6 +173,8 @@ export default function ChatsScreen() {
     socket.on('userOnline', onUserOnline);
     socket.on('userOffline', onUserOffline);
     socket.on('chatsDeleted', onChatsDeleted);
+    socket.on('profileUpdated', onProfileUpdated);
+    socket.on('connect', onReconnect);
     return () => {
       socket.off('chatUpdated', onChatUpdated);
       socket.off('lastMessageUpdated', onLastMessage);
@@ -153,8 +183,10 @@ export default function ChatsScreen() {
       socket.off('userOnline', onUserOnline);
       socket.off('userOffline', onUserOffline);
       socket.off('chatsDeleted', onChatsDeleted);
+      socket.off('profileUpdated', onProfileUpdated);
+      socket.off('connect', onReconnect);
     };
-  }, [socket, me, upsert]);
+  }, [socket, me, upsert, load]);
 
   const openChat = (c: ChatSummary) => {
     upsert(c.partnerId, { unreadCount: 0 }, false);
@@ -184,10 +216,10 @@ export default function ChatsScreen() {
   const deleteSelected = () => {
     const ids = [...sel.selected];
     if (ids.length === 0) return;
-    Alert.alert('Удалить чаты', `Удалить ${ids.length} ${ids.length === 1 ? 'чат' : 'чатов'}?`, [
-      { text: 'Отмена', style: 'cancel' },
+    Alert.alert(t('chats.deleteTitle'), t('chats.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Удалить',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           const idSet = new Set(ids);
@@ -217,32 +249,24 @@ export default function ChatsScreen() {
     <View style={{ paddingTop: insets.top + 12 }}>
       {/* Title row */}
       <View style={styles.titleRow}>
-        <Text style={styles.title}>Чаты</Text>
-        <Pressable
-          style={styles.addBtn}
-          onPress={() => router.push('/(app)/new-chat')}
-          hitSlop={8}
-          accessibilityLabel="Новый чат"
-        >
-          <Ionicons name="create-outline" size={20} color={colors.accent} />
-        </Pressable>
+        <Text style={styles.title}>{t('tabs.chats')}</Text>
       </View>
 
       {/* Search bar — filters existing conversations */}
       <View style={styles.searchBar}>
-        <Ionicons name="search" size={17} color={colors.textFaint} />
+        <Ionicons name="search" size={17} color={c.textFaint} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Поиск"
-          placeholderTextColor={colors.textFaint}
+          placeholder={t('common.search')}
+          placeholderTextColor={c.textFaint}
           style={styles.searchInput}
           autoCapitalize="none"
           returnKeyType="search"
         />
         {query.length > 0 && (
           <Pressable hitSlop={8} onPress={() => setQuery('')}>
-            <Ionicons name="close-circle" size={17} color={colors.textFaint} />
+            <Ionicons name="close-circle" size={17} color={c.textFaint} />
           </Pressable>
         )}
       </View>
@@ -250,13 +274,15 @@ export default function ChatsScreen() {
   );
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      {isFocused ? <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} /> : null}
       {sel.active ? (
         <SelectionBar
           count={sel.count}
           total={visibleChats.length}
           paddingTop={insets.top}
-          label="чатов"
+          label={t('chats.selLabel')}
+          palette={c}
           onClose={sel.exit}
           onSelectAll={() => sel.selectAll(visibleChats.map((c) => Number(c.partnerId)))}
           extraActions={[
@@ -270,7 +296,7 @@ export default function ChatsScreen() {
       )}
       <OfflineBanner />
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+        <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
       ) : (
         <FlatList
           data={visibleChats}
@@ -287,6 +313,7 @@ export default function ChatsScreen() {
                 selectionMode={sel.active}
                 selected={sel.isSelected(id)}
                 draft={drafts.get(String(id))}
+                palette={c}
                 onLongPress={() => sel.enter(id)}
                 onPress={() => (sel.active ? sel.toggle(id) : openChat(item))}
                 onAvatarPress={sel.active ? undefined : () => router.push({ pathname: '/(app)/user/[id]', params: { id: String(id), name: item.username || '', avatar: item.picture || '' } })}
@@ -301,14 +328,16 @@ export default function ChatsScreen() {
             query.trim() ? (
               <EmptyState
                 icon="search-outline"
-                title="Ничего не найдено"
-                body="Попробуйте другое имя пользователя."
+                title={t('common.notFound')}
+                body={t('chats.noResultsBody')}
+                palette={c}
               />
             ) : (
               <EmptyState
                 icon="chatbubbles-outline"
-                title="Пока нет переписок"
-                body="Найдите собеседника по имени пользователя и начните новый зашифрованный чат."
+                title={t('chats.emptyTitle')}
+                body={t('chats.emptyBody')}
+                palette={c}
               />
             )
           }
@@ -318,7 +347,7 @@ export default function ChatsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => { setRefreshing(true); load(); }}
-              tintColor={colors.accent}
+              tintColor={c.accent}
             />
           }
         />
@@ -329,9 +358,9 @@ export default function ChatsScreen() {
         <Pressable
           style={[styles.fab, { bottom: insets.bottom + 96 }]}
           onPress={() => router.push('/(app)/new-chat')}
-          accessibilityLabel="Написать сообщение"
+          accessibilityLabel={t('chats.writeMessage')}
         >
-          <Ionicons name="create" size={24} color={colors.ink} />
+          <Ionicons name="create" size={24} color={c.ink} />
         </Pressable>
       )}
     </AuroraBackground>
@@ -340,7 +369,7 @@ export default function ChatsScreen() {
 
 const SIDE = 20;
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   // Title
@@ -352,7 +381,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
-    color: colors.text,
+    color: c.text,
     fontFamily: font.display,
     fontSize: 34,
     letterSpacing: -0.6,
@@ -360,9 +389,9 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 44, height: 44,
     borderRadius: radius.full,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: c.stroke,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -373,14 +402,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 9,
     marginHorizontal: SIDE,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     height: 44,
   },
   searchInput: {
     flex: 1,
-    color: colors.text,
+    color: c.text,
     fontFamily: font.body,
     fontSize: 16,
     paddingVertical: 0,
@@ -389,7 +418,7 @@ const styles = StyleSheet.create({
   // List
   separator: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.stroke,
+    backgroundColor: c.stroke,
     marginLeft: SIDE + 56 + 14,
   },
 
@@ -399,7 +428,7 @@ const styles = StyleSheet.create({
     right: 22,
     width: 58, height: 58,
     borderRadius: radius.xl,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#7C4DFF',

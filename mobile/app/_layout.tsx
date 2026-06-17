@@ -18,6 +18,9 @@ import {
 } from '@expo-google-fonts/inter';
 import { AuthProvider } from '@/state/auth';
 import { SocketProvider } from '@/state/socket';
+import { CallProvider } from '@/state/call';
+import { LanguageProvider } from '@/i18n';
+import { ThemeProvider } from '@/theme/ThemeContext';
 import { colors } from '@/theme/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -43,22 +46,28 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
+        <ThemeProvider>
+        <LanguageProvider>
         <AuthProvider>
           <SocketProvider>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: colors.bg },
-                animation: 'fade',
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(auth)" />
-              <Stack.Screen name="(app)" />
-            </Stack>
+            <CallProvider>
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: colors.bg },
+                  animation: 'fade',
+                }}
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="(app)" />
+              </Stack>
+            </CallProvider>
           </SocketProvider>
         </AuthProvider>
+        </LanguageProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

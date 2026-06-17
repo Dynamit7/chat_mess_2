@@ -1,8 +1,9 @@
+import { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, radius, gradients } from '@/theme/theme';
+import { colors, font, radius, gradients, Palette } from '@/theme/theme';
 import { timeOf } from '@/lib/format';
 import { fixFileUrl } from '@/lib/config';
 import { SwipeToReply } from '@/components/chat/SwipeToReply';
@@ -34,6 +35,7 @@ type Props = {
   /** Whether this message may be picked (only deletable ones). */
   selectable?: boolean;
   onToggleSelect?: (m: Message) => void;
+  palette?: Palette;
 };
 
 // Stable-ish colour for a sender label in group chats.
@@ -45,17 +47,19 @@ function nameColor(s: string) {
 }
 
 /** Read-state ticks. On violet bubbles they sit in white; read state turns solid white. */
-function Ticks({ msg }: { msg: Message }) {
+function Ticks({ msg, c }: { msg: Message; c: Palette }) {
   const dim = 'rgba(255,255,255,0.6)';
   const solid = 'rgba(255,255,255,0.98)';
   if (msg.status === 'sending') return <Ionicons name="time-outline" size={12} color={dim} />;
-  if (msg.status === 'failed') return <Ionicons name="alert-circle" size={12} color={colors.danger} />;
+  if (msg.status === 'failed') return <Ionicons name="alert-circle" size={12} color={c.danger} />;
   if (msg.isRead) return <Ionicons name="checkmark-done" size={14} color={solid} />;
   if (msg.isDelivered) return <Ionicons name="checkmark-done" size={14} color={dim} />;
   return <Ionicons name="checkmark" size={14} color={dim} />;
 }
 
-export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect }: Props) {
+export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect, palette = colors }: Props) {
+  const c = palette;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const hasText = !!(msg.text && msg.text.trim());
   const isImage = msg.type === 'image' && !!msg.fileUrl;
   const isAudio = msg.type === 'audio' && !!msg.fileUrl;
@@ -71,7 +75,7 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
   }
   const reactionList = Object.entries(agg);
 
-  const metaColor = isOut ? 'rgba(255,255,255,0.72)' : colors.textFaint;
+  const metaColor = isOut ? 'rgba(255,255,255,0.72)' : c.textFaint;
 
   const bubbleStyle = [
     styles.bubble,
@@ -87,7 +91,7 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
       ) : null}
       {msg.forwardedFromUsername ? (
         <View style={[styles.forwardBanner, isOut && styles.forwardBannerOut]}>
-          <Ionicons name="arrow-redo" size={12} color={isOut ? 'rgba(255,255,255,0.75)' : colors.accent} />
+          <Ionicons name="arrow-redo" size={12} color={isOut ? 'rgba(255,255,255,0.75)' : c.accent} />
           <Text style={[styles.forwardText, isOut && { color: 'rgba(255,255,255,0.75)' }]} numberOfLines={1}>
             {isOut && myUsername && msg.forwardedFromUsername === myUsername ? 'Вы' : msg.forwardedFromUsername}
           </Text>
@@ -111,14 +115,14 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
 
       {isFile ? (
         <View style={styles.fileRow}>
-          <View style={[styles.fileIcon, { backgroundColor: isOut ? 'rgba(255,255,255,0.18)' : colors.accentSoft }]}>
+          <View style={[styles.fileIcon, { backgroundColor: isOut ? 'rgba(255,255,255,0.18)' : c.accentSoft }]}>
             <Ionicons
               name={msg.type === 'video' ? 'play' : 'document'}
               size={18}
-              color={isOut ? colors.white : colors.accent}
+              color={isOut ? c.white : c.accent}
             />
           </View>
-          <Text numberOfLines={1} style={[styles.fileName, isOut && { color: colors.white }]}>{msg.filename || 'Attachment'}</Text>
+          <Text numberOfLines={1} style={[styles.fileName, isOut && { color: c.white }]}>{msg.filename || 'Attachment'}</Text>
         </View>
       ) : null}
 
@@ -127,7 +131,7 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
       <View style={styles.meta}>
         {msg.isEdited ? <Text style={[styles.edited, { color: metaColor }]}>edited</Text> : null}
         <Text style={[styles.time, { color: metaColor }]}>{timeOf(msg.createdAt)}</Text>
-        {isOut ? <Ticks msg={msg} /> : null}
+        {isOut ? <Ticks msg={msg} c={c} /> : null}
       </View>
     </>
   );
@@ -159,7 +163,7 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
               style={[styles.reactionChip, info.mine && styles.reactionChipMine]}
             >
               <Text style={styles.reactionEmoji}>{emoji}</Text>
-              {info.count > 1 ? <Text style={[styles.reactionCount, info.mine && { color: colors.accent }]}>{info.count}</Text> : null}
+              {info.count > 1 ? <Text style={[styles.reactionCount, info.mine && { color: c.accent }]}>{info.count}</Text> : null}
             </Pressable>
           ))}
         </View>
@@ -174,7 +178,7 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
         style={[styles.selectRow, selected && styles.selectRowOn]}
       >
         <View style={[styles.checkbox, selected && styles.checkboxOn, !selectable && styles.checkboxHidden]}>
-          {selected ? <Ionicons name="checkmark" size={14} color={colors.ink} /> : null}
+          {selected ? <Ionicons name="checkmark" size={14} color={c.ink} /> : null}
         </View>
         <View style={{ flex: 1 }} pointerEvents="none">{body}</View>
       </Pressable>
@@ -192,49 +196,49 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
   return body;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   rowWrap: { paddingHorizontal: 14 },
   bubble: { paddingHorizontal: 13, paddingVertical: 8, borderRadius: radius.lg },
   bubbleMedia: { padding: 4, paddingBottom: 6 },
   // Outgoing: violet→indigo gradient (fill comes from LinearGradient), white text, sharp bottom-right tail.
   bubbleOut: { borderBottomRightRadius: 5 },
   // Incoming: quiet violet surface, hairline border, sharp bottom-left tail.
-  bubbleIn: { backgroundColor: colors.bubbleIn, borderWidth: 1, borderColor: colors.stroke, borderBottomLeftRadius: 5 },
+  bubbleIn: { backgroundColor: c.bubbleIn, borderWidth: 1, borderColor: c.stroke, borderBottomLeftRadius: 5 },
   groupedOut: { borderTopRightRadius: radius.lg, borderBottomRightRadius: 5 },
   groupedIn: { borderTopLeftRadius: radius.lg, borderBottomLeftRadius: 5 },
   sender: { fontFamily: font.bodySemi, fontSize: 12.5, marginBottom: 2 },
   text: { fontFamily: font.body, fontSize: 15.5, lineHeight: 21 },
-  textOut: { color: colors.white },
-  textIn: { color: colors.text },
+  textOut: { color: c.white },
+  textIn: { color: c.text },
   meta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 5, marginTop: 3 },
   time: { fontFamily: font.mono, fontSize: 10.5, letterSpacing: 0.2 },
   edited: { fontFamily: font.mono, fontSize: 10.5, fontStyle: 'italic' },
-  image: { width: 232, height: 232, borderRadius: 13, backgroundColor: colors.glass },
+  image: { width: 232, height: 232, borderRadius: 13, backgroundColor: c.glass },
   forwardBanner: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   forwardBannerOut: {},
-  forwardText: { color: colors.accent, fontFamily: font.bodyMed, fontSize: 12, fontStyle: 'italic', flexShrink: 1 },
+  forwardText: { color: c.accent, fontFamily: font.bodyMed, fontSize: 12, fontStyle: 'italic', flexShrink: 1 },
   reply: { borderLeftWidth: 2, paddingLeft: 8, paddingVertical: 3, marginBottom: 5 },
   replyOut: { borderLeftColor: 'rgba(255,255,255,0.7)' },
-  replyIn: { borderLeftColor: colors.accent },
-  replyText: { color: colors.textDim, fontFamily: font.body, fontSize: 13 },
+  replyIn: { borderLeftColor: c.accent },
+  replyText: { color: c.textDim, fontFamily: font.body, fontSize: 13 },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, paddingRight: 8, minWidth: 180 },
   fileIcon: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  fileName: { flex: 1, color: colors.text, fontFamily: font.bodyMed, fontSize: 14 },
+  fileName: { flex: 1, color: c.text, fontFamily: font.bodyMed, fontSize: 14 },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5, maxWidth: '82%' },
   reactionChip: {
     flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3,
-    backgroundColor: colors.glass2, borderRadius: radius.full, borderWidth: 1, borderColor: colors.stroke,
+    backgroundColor: c.glass2, borderRadius: radius.full, borderWidth: 1, borderColor: c.stroke,
   },
-  reactionChipMine: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  reactionChipMine: { backgroundColor: c.accentSoft, borderColor: c.accent },
   reactionEmoji: { fontSize: 13 },
-  reactionCount: { color: colors.textDim, fontFamily: font.bodySemi, fontSize: 12 },
+  reactionCount: { color: c.textDim, fontFamily: font.bodySemi, fontSize: 12 },
 
   selectRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 14 },
-  selectRowOn: { backgroundColor: colors.glass },
+  selectRowOn: { backgroundColor: c.glass },
   checkbox: {
-    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.stroke2,
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.stroke2,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxOn: { backgroundColor: c.accent, borderColor: c.accent },
   checkboxHidden: { opacity: 0 },
 });

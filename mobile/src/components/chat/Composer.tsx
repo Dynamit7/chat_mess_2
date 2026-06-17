@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { View, TextInput, Pressable, StyleSheet, Text, Alert, Keyboard } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,8 @@ import {
   requestRecordingPermissionsAsync, setAudioModeAsync,
 } from 'expo-audio';
 import { getDraft, writeDraft, commitDraft } from '@/lib/drafts';
-import { colors, font, radius, gradients, shadow } from '@/theme/theme';
+import { font, radius, gradients, shadow, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 import type { Message } from '@/lib/api';
 
 const fmtMs = (ms: number) => {
@@ -42,6 +43,8 @@ export function Composer({
   onSendAudio?: (asset: { uri: string; name?: string; mime?: string }) => void;
   onTyping: (isTyping: boolean) => void;
 }) {
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [text, setText] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const typingRef = useRef(false);
@@ -183,7 +186,7 @@ export function Composer({
             <Text numberOfLines={1} style={styles.bannerText}>{banner.text}</Text>
           </View>
           <Pressable hitSlop={8} onPress={banner.onCancel}>
-            <Ionicons name="close" size={20} color={colors.textDim} />
+            <Ionicons name="close" size={20} color={c.textDim} />
           </Pressable>
         </View>
       ) : null}
@@ -199,7 +202,7 @@ export function Composer({
           <>
             {!editing ? (
               <Pressable onPress={onAttach} style={styles.attach} hitSlop={6}>
-                <Ionicons name="add" size={26} color={colors.accent} />
+                <Ionicons name="add" size={26} color={c.accent} />
               </Pressable>
             ) : null}
             <View style={styles.inputWrap}>
@@ -209,7 +212,7 @@ export function Composer({
                 onChangeText={emitTyping}
                 onFocus={() => setEmojiOpen(false)}
                 placeholder="Сообщение"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={c.textFaint}
                 style={styles.input}
                 multiline
               />
@@ -217,7 +220,7 @@ export function Composer({
                 <Ionicons
                   name={emojiOpen ? 'chevron-down-outline' : 'happy-outline'}
                   size={24}
-                  color={emojiOpen ? colors.accent : colors.textFaint}
+                  color={emojiOpen ? c.accent : c.textFaint}
                 />
               </Pressable>
             </View>
@@ -227,13 +230,13 @@ export function Composer({
         {(!!onSendAudio && !editing && !text.trim()) || recording ? (
           <Pressable onPressIn={startRecording} onPressOut={() => finishRecording(true)} hitSlop={4}>
             <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.send, recording && styles.sendRec]}>
-              <Ionicons name="mic" size={22} color={colors.ink} />
+              <Ionicons name="mic" size={22} color={c.ink} />
             </LinearGradient>
           </Pressable>
         ) : (
           <Pressable onPress={submit} disabled={!text.trim()} style={{ opacity: text.trim() ? 1 : 0.4 }}>
             <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.send, text.trim() ? shadow.glow : null]}>
-              <Ionicons name={editing ? 'checkmark' : 'arrow-up'} size={22} color={colors.ink} />
+              <Ionicons name={editing ? 'checkmark' : 'arrow-up'} size={22} color={c.ink} />
             </LinearGradient>
           </Pressable>
         )}
@@ -248,34 +251,34 @@ export function Composer({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 8, gap: 8 },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.glass, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: colors.stroke },
-  bannerBar: { width: 3, height: 32, borderRadius: 2, backgroundColor: colors.accent },
-  bannerTitle: { color: colors.accent, fontFamily: font.bodySemi, fontSize: 12 },
-  bannerText: { color: colors.textDim, fontFamily: font.body, fontSize: 13, marginTop: 1 },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.glass, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: c.stroke },
+  bannerBar: { width: 3, height: 32, borderRadius: 2, backgroundColor: c.accent },
+  bannerTitle: { color: c.accent, fontFamily: font.bodySemi, fontSize: 12 },
+  bannerText: { color: c.textDim, fontFamily: font.body, fontSize: 13, marginTop: 1 },
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   attach: {
-    width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.glass2, borderWidth: 1, borderColor: colors.stroke,
+    width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.glass2, borderWidth: 1, borderColor: c.stroke,
     alignItems: 'center', justifyContent: 'center',
   },
   inputWrap: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.stroke, borderRadius: radius.lg,
+    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: radius.lg,
     paddingLeft: 16, paddingRight: 6, minHeight: 44, maxHeight: 130,
   },
-  input: { flex: 1, color: colors.text, fontFamily: font.body, fontSize: 16, paddingVertical: 10 },
+  input: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 16, paddingVertical: 10 },
   emojiBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   emojiPanel: { marginHorizontal: -12 },
   send: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   sendRec: { transform: [{ scale: 1.12 }] },
   recBar: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.stroke, borderRadius: radius.lg,
+    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: radius.lg,
     paddingHorizontal: 16, minHeight: 44,
   },
-  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
-  recTime: { color: colors.text, fontFamily: font.mono, fontSize: 14 },
-  recHint: { flex: 1, color: colors.textFaint, fontFamily: font.body, fontSize: 13, textAlign: 'right' },
+  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.danger },
+  recTime: { color: c.text, fontFamily: font.mono, fontSize: 14 },
+  recHint: { flex: 1, color: c.textFaint, fontFamily: font.body, fontSize: 13, textAlign: 'right' },
 });
 

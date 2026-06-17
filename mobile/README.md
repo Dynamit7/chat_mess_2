@@ -18,6 +18,23 @@ custom design system that mirrors the web client.
 - **Groups / Channels / Reels** — on-brand placeholder screens, wired to the same
   API client and ready to build out next.
 
+## Voice & video calls (WebRTC)
+
+Real 1-to-1 audio/video calls run over **`react-native-webrtc`** with Socket.IO
+signalling (`callUser` / `offer` / `answer` / `iceCandidate`). Because that's a
+native module, **calls work only in a development/production build — not in Expo
+Go** (there they degrade gracefully to an "unavailable" alert; everything else
+keeps working).
+
+```bash
+# one-time dev client build (then use `npx expo start --dev-client`)
+eas build --profile development --platform android
+```
+
+ICE servers come from the backend (`GET /api/calls/ice-servers`). For calls
+across different networks set TURN env vars on the backend (`TURN_URL`,
+`TURN_USER`, `TURN_PASS`); STUN alone only covers same-network / simple NATs.
+
 ## Run it (Expo Go)
 
 1. **Start the backend** (`chat_mess/back`) so it listens on `:3050`.

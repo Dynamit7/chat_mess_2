@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Modal, View, Text, Pressable, StyleSheet, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
-import { colors, font, radius } from '@/theme/theme';
+import { font, radius, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 type Reaction = { userId: number; emoji: string };
 
@@ -20,6 +22,8 @@ export function ReactionsViewer({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   // Emoji summary chips (emoji × count), most used first.
   const counts = new Map<string, number>();
@@ -63,24 +67,24 @@ export function ReactionsViewer({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
-    backgroundColor: colors.bg2, borderTopLeftRadius: 22, borderTopRightRadius: 22,
-    borderWidth: 1, borderColor: colors.stroke, paddingHorizontal: 16, paddingTop: 10,
+    backgroundColor: c.bg2, borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    borderWidth: 1, borderColor: c.stroke, paddingHorizontal: 16, paddingTop: 10,
   },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.stroke2, marginBottom: 12 },
-  head: { gap: 10, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.stroke },
-  title: { color: colors.text, fontFamily: font.bodySemi, fontSize: 16 },
+  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.stroke2, marginBottom: 12 },
+  head: { gap: 10, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.stroke },
+  title: { color: c.text, fontFamily: font.bodySemi, fontSize: 16 },
   summary: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4,
-    backgroundColor: colors.glass2, borderRadius: radius.full, borderWidth: 1, borderColor: colors.stroke,
+    backgroundColor: c.glass2, borderRadius: radius.full, borderWidth: 1, borderColor: c.stroke,
   },
   chipEmoji: { fontSize: 14 },
-  chipCount: { color: colors.textDim, fontFamily: font.bodySemi, fontSize: 12 },
+  chipCount: { color: c.textDim, fontFamily: font.bodySemi, fontSize: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
-  name: { flex: 1, color: colors.text, fontFamily: font.bodyMed, fontSize: 15 },
+  name: { flex: 1, color: c.text, fontFamily: font.bodyMed, fontSize: 15 },
   emoji: { fontSize: 22 },
-  empty: { color: colors.textFaint, fontFamily: font.body, fontSize: 14, textAlign: 'center', paddingVertical: 24 },
+  empty: { color: c.textFaint, fontFamily: font.body, fontSize: 14, textAlign: 'center', paddingVertical: 24 },
 });

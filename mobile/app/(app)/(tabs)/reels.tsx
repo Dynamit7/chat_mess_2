@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, RefreshControl,
@@ -8,6 +8,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -15,14 +16,17 @@ import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
-import { reelsApi, storiesApi } from '@/lib/api';
+import { reelsApi, storiesApi, ForwardPayload } from '@/lib/api';
+import { ForwardSheet } from '@/components/chat/ForwardSheet';
 import { groupStories, StoryOwner } from '@/lib/storyGroups';
 import { useAuth } from '@/state/auth';
-import { colors, font, gradients } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, gradients, Palette } from '@/theme/theme';
 import { fixFileUrl } from '@/lib/config';
 import { relativeShort } from '@/lib/format';
 
 type Media = { uri: string; name: string; type: string; kind: 'image' | 'video' };
+type S = ReturnType<typeof makeStyles>;
 
 const fmt = (n: number) => {
   n = Number(n) || 0;
@@ -43,6 +47,8 @@ export default function FeedScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const me = Number(user?.userId);
   const meRef = useRef(me); meRef.current = me;
 
@@ -53,6 +59,7 @@ export default function FeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [commentsFor, setCommentsFor] = useState<any | null>(null);
+  const [forwardFor, setForwardFor] = useState<any | null>(null);
   const [activeVideoId, setActiveVideoId] = useState<number | null>(null);
   const [focused, setFocused] = useState(true);
 
@@ -73,12 +80,14 @@ export default function FeedScreen() {
     try {
       const [feed, disc] = await Promise.all([
         reelsApi.feed(me).catch(() => []),
-        reelsApi.discover().catch(() => []),
+        reelsApi.discover(1, me).catch(() => []),
       ]);
       const a = Array.isArray(feed) ? feed : feed?.reels || [];
       const b = Array.isArray(disc) ? disc : disc?.reels || [];
+      // Feed carries the per-user fields (isLiked / isFollowing); apply it LAST so
+      // it wins over the discover copy of the same post and the heart stays correct.
       const map = new Map<number, any>();
-      [...a, ...b].forEach((r) => { if (r && r.id != null) map.set(r.id, r); });
+      [...b, ...a].forEach((r) => { if (r && r.id != null) map.set(r.id, r); });
       // Newest first for a feed.
       const merged = [...map.values()].sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
       setPosts(merged);
@@ -116,9 +125,25 @@ export default function FeedScreen() {
     setPosts((prev) => prev.map((r) => r.userId === post.userId ? { ...r, isFollowing: true } : r));
     reelsApi.follow(me, post.userId).catch(() => {});
   };
-  const share = (post: any) => {
+  // Open the forward sheet so the post can actually be sent to a chat/group/channel.
+  const share = (post: any) => setForwardFor(post);
+  // Called only after the forward succeeds — record the share + bump the counter.
+  const onForwarded = (post: any) => {
     setPosts((prev) => prev.map((r) => r.id === post.id ? { ...r, sharesCount: (r.sharesCount || 0) + 1 } : r));
     reelsApi.share(post.id).catch(() => {});
+  };
+  // Build a forwardable message payload out of a feed post.
+  const forwardPayload = (post: any): ForwardPayload => {
+    const kind = postKind(post);
+    return {
+      id: Number(post.id),
+      sourceType: 'channel',
+      text: post.caption || '',
+      type: kind === 'text' ? 'text' : kind,
+      fileUrl: kind === 'text' ? null : post.videoUrl || null,
+      filename: null,
+      senderUsername: post.creator?.username || post.creator?.nickname || 'User',
+    };
   };
   const removePost = (post: any) =>
     Alert.alert('Удалить пост', 'Удалить эту публикацию?', [
@@ -156,17 +181,18 @@ export default function FeedScreen() {
   const openStory = (ownerIndex: number) => router.push({ pathname: '/(app)/story', params: { start: String(ownerIndex) } });
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      {focused ? <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} /> : null}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>Лента</Text>
         <Pressable onPress={() => setCreating(true)} style={styles.createBtn} hitSlop={8}>
           <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-          <Ionicons name="add" size={22} color={colors.ink} />
+          <Ionicons name="add" size={22} color={c.ink} />
         </Pressable>
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+        <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
       ) : (
         <FlatList
           data={posts}
@@ -175,7 +201,7 @@ export default function FeedScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
           onViewableItemsChanged={onViewable}
           viewabilityConfig={viewConfig}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.accent} />}
           ListHeaderComponent={
             <StoriesStrip
               owners={owners}
@@ -185,11 +211,13 @@ export default function FeedScreen() {
               busy={storiesBusy}
               onAdd={addStory}
               onOpen={openStory}
+              styles={styles}
+              c={c}
             />
           }
           ListEmptyComponent={
             <View style={{ paddingTop: 40 }}>
-              <EmptyState icon="newspaper-outline" title="Пока пусто" body="Поделитесь первым постом — фото, видео или мыслями." />
+              <EmptyState icon="newspaper-outline" title="Пока пусто" body="Поделитесь первым постом — фото, видео или мыслями." palette={c} />
             </View>
           }
           renderItem={({ item }) => (
@@ -197,6 +225,8 @@ export default function FeedScreen() {
               post={item}
               me={me}
               active={item.id === activeVideoId && focused}
+              styles={styles}
+              c={c}
               onLike={() => toggleLike(item)}
               onComment={() => setCommentsFor(item)}
               onShare={() => share(item)}
@@ -213,6 +243,8 @@ export default function FeedScreen() {
           me={me}
           username={user?.username}
           avatar={user?.avatar}
+          styles={styles}
+          c={c}
           onClose={() => setCreating(false)}
           onCreated={() => { setCreating(false); setLoading(true); loadPosts(); }}
         />
@@ -221,10 +253,20 @@ export default function FeedScreen() {
         <ReelComments
           reel={commentsFor}
           me={me}
+          styles={styles}
+          c={c}
           onClose={() => setCommentsFor(null)}
           onAdded={() => setPosts((prev) => prev.map((r) => r.id === commentsFor.id ? { ...r, commentsCount: (r.commentsCount || 0) + 1 } : r))}
+          onRemoved={() => setPosts((prev) => prev.map((r) => r.id === commentsFor.id ? { ...r, commentsCount: Math.max(0, (r.commentsCount || 0) - 1) } : r))}
         />
       )}
+      <ForwardSheet
+        visible={!!forwardFor}
+        userId={me}
+        message={forwardFor ? forwardPayload(forwardFor) : null}
+        onSent={() => { if (forwardFor) onForwarded(forwardFor); }}
+        onClose={() => setForwardFor(null)}
+      />
     </AuroraBackground>
   );
 }
@@ -232,9 +274,9 @@ export default function FeedScreen() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Stories strip (horizontal rings) — redesigned, compact
 // ─────────────────────────────────────────────────────────────────────────────
-function StoriesStrip({ owners, me, username, avatar, busy, onAdd, onOpen }: {
+function StoriesStrip({ owners, me, username, avatar, busy, onAdd, onOpen, styles, c }: {
   owners: StoryOwner[]; me: number; username?: string; avatar?: string; busy: boolean;
-  onAdd: () => void; onOpen: (ownerIndex: number) => void;
+  onAdd: () => void; onOpen: (ownerIndex: number) => void; styles: S; c: Palette;
 }) {
   const mine = owners.find((o) => o.userId === me);
   const others = owners.filter((o) => o.userId !== me);
@@ -248,14 +290,14 @@ function StoriesStrip({ owners, me, username, avatar, busy, onAdd, onOpen }: {
           <View>
             {mine ? (
               <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ring}>
-                <View style={styles.ringInner}><Avatar name={username} src={avatar} size={56} /></View>
+                <View style={styles.ringInner}><Avatar name={username} src={avatar} size={56} palette={c} /></View>
               </LinearGradient>
             ) : (
-              <View style={styles.ringSeen}><Avatar name={username} src={avatar} size={56} /></View>
+              <View style={styles.ringSeen}><Avatar name={username} src={avatar} size={56} palette={c} /></View>
             )}
             <Pressable onPress={onAdd} hitSlop={8} style={styles.addBadge}>
               <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-              <Ionicons name="add" size={14} color={colors.ink} />
+              <Ionicons name="add" size={14} color={c.ink} />
             </Pressable>
           </View>
           <Text numberOfLines={1} style={styles.storyName}>{busy ? 'Загрузка…' : 'Вы'}</Text>
@@ -267,10 +309,10 @@ function StoriesStrip({ owners, me, username, avatar, busy, onAdd, onOpen }: {
             <Pressable key={o.userId} style={styles.storyItem} onPress={() => onOpen(idx)}>
               {o.hasUnviewed ? (
                 <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ring}>
-                  <View style={styles.ringInner}><Avatar name={o.username} src={o.avatar} size={56} /></View>
+                  <View style={styles.ringInner}><Avatar name={o.username} src={o.avatar} size={56} palette={c} /></View>
                 </LinearGradient>
               ) : (
-                <View style={styles.ringSeen}><Avatar name={o.username} src={o.avatar} size={56} /></View>
+                <View style={styles.ringSeen}><Avatar name={o.username} src={o.avatar} size={56} palette={c} /></View>
               )}
               <Text numberOfLines={1} style={styles.storyName}>{o.username}</Text>
             </Pressable>
@@ -285,7 +327,7 @@ function StoriesStrip({ owners, me, username, avatar, busy, onAdd, onOpen }: {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Feed post card
 // ─────────────────────────────────────────────────────────────────────────────
-function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDelete, onOpenProfile }: any) {
+function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDelete, onOpenProfile, styles, c }: any) {
   const creator = post.creator || {};
   const isMine = Number(post.userId) === me;
   const kind = postKind(post);
@@ -293,20 +335,20 @@ function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDe
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
-        <Pressable onPress={onOpenProfile}><Avatar name={creator.username} src={creator.avatar} size={46} ring={post.isFollowing} /></Pressable>
+        <Pressable onPress={onOpenProfile}><Avatar name={creator.username} src={creator.avatar} size={46} ring={post.isFollowing} palette={c} /></Pressable>
         <Pressable style={{ flex: 1 }} onPress={onOpenProfile}>
           <Text style={styles.authorName} numberOfLines={1}>{creator.username || creator.nickname || 'User'}</Text>
           <Text style={styles.postTime}>{relativeShort(post.createdAt)}</Text>
         </Pressable>
         {!isMine && !post.isFollowing ? (
           <Pressable onPress={onFollow} style={styles.followBtn}>
-            <Ionicons name="add" size={15} color={colors.accent} />
+            <Ionicons name="add" size={15} color={c.accent} />
             <Text style={styles.followText}>Подписаться</Text>
           </Pressable>
         ) : null}
         {isMine ? (
           <Pressable onPress={onDelete} hitSlop={8} style={styles.moreBtn}>
-            <Ionicons name="ellipsis-horizontal" size={20} color={colors.textFaint} />
+            <Ionicons name="ellipsis-horizontal" size={20} color={c.textFaint} />
           </Pressable>
         ) : null}
       </View>
@@ -318,7 +360,7 @@ function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDe
       {kind === 'image' ? (
         <Image source={{ uri: fixFileUrl(post.videoUrl) }} style={styles.media} contentFit="cover" transition={150} />
       ) : kind === 'video' ? (
-        <VideoPost uri={fixFileUrl(post.videoUrl)} active={active} />
+        <VideoPost uri={fixFileUrl(post.videoUrl)} active={active} styles={styles} />
       ) : null}
 
       {Array.isArray(post.hashtags) && post.hashtags.length > 0 ? (
@@ -326,15 +368,15 @@ function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDe
       ) : null}
 
       <View style={styles.actions}>
-        <ActionButton icon={post.isLiked ? 'heart' : 'heart-outline'} color={post.isLiked ? colors.danger : colors.textDim} label={fmt(post.likesCount)} onPress={onLike} />
-        <ActionButton icon="chatbubble-outline" color={colors.textDim} label={fmt(post.commentsCount)} onPress={onComment} />
-        <ActionButton icon="arrow-redo-outline" color={colors.textDim} label={fmt(post.sharesCount)} onPress={onShare} />
+        <ActionButton icon={post.isLiked ? 'heart' : 'heart-outline'} color={post.isLiked ? c.danger : c.textDim} label={fmt(post.likesCount)} onPress={onLike} styles={styles} />
+        <ActionButton icon="chatbubble-outline" color={c.textDim} label={fmt(post.commentsCount)} onPress={onComment} styles={styles} />
+        <ActionButton icon="arrow-redo-outline" color={c.textDim} label={fmt(post.sharesCount)} onPress={onShare} styles={styles} />
       </View>
     </View>
   );
 }
 
-function ActionButton({ icon, color, label, onPress }: { icon: any; color: string; label: string; onPress: () => void }) {
+function ActionButton({ icon, color, label, onPress, styles }: { icon: any; color: string; label: string; onPress: () => void; styles: S }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.actBtn, pressed && { opacity: 0.6 }]}>
       <Ionicons name={icon} size={22} color={color} />
@@ -343,7 +385,7 @@ function ActionButton({ icon, color, label, onPress }: { icon: any; color: strin
   );
 }
 
-function VideoPost({ uri, active }: { uri: string; active: boolean }) {
+function VideoPost({ uri, active, styles }: { uri: string; active: boolean; styles: S }) {
   const player = useVideoPlayer(uri, (p) => { p.loop = true; p.muted = true; });
   const [muted, setMuted] = useState(true);
   const [paused, setPaused] = useState(false);
@@ -370,8 +412,8 @@ function VideoPost({ uri, active }: { uri: string; active: boolean }) {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Create post (universal: image / video / text) — prettier modal
 // ─────────────────────────────────────────────────────────────────────────────
-function CreatePost({ me, username, avatar, onClose, onCreated }: {
-  me: number; username?: string; avatar?: string; onClose: () => void; onCreated: () => void;
+function CreatePost({ me, username, avatar, onClose, onCreated, styles, c }: {
+  me: number; username?: string; avatar?: string; onClose: () => void; onCreated: () => void; styles: S; c: Palette;
 }) {
   const insets = useSafeAreaInsets();
   const [media, setMedia] = useState<Media | null>(null);
@@ -426,12 +468,12 @@ function CreatePost({ me, username, avatar, onClose, onCreated }: {
           </View>
 
           <View style={styles.composerRow}>
-            <Avatar name={username} src={avatar} size={42} />
+            <Avatar name={username} src={avatar} size={42} palette={c} />
             <TextInput
               value={caption}
               onChangeText={setCaption}
               placeholder="Поделитесь чем-нибудь…"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={c.textFaint}
               style={styles.captionInput}
               multiline
               autoFocus
@@ -456,11 +498,11 @@ function CreatePost({ me, username, avatar, onClose, onCreated }: {
 
           <View style={styles.toolbar}>
             <Pressable style={styles.toolBtn} onPress={pick}>
-              <Ionicons name="image-outline" size={22} color={colors.accent} />
+              <Ionicons name="image-outline" size={22} color={c.accent} />
               <Text style={styles.toolText}>Фото / Видео</Text>
             </Pressable>
             <View style={{ flex: 1 }} />
-            <Button label="Опубликовать" onPress={submit} loading={posting} disabled={!canPost} style={{ paddingHorizontal: 26, height: 46 }} />
+            <Button label="Опубликовать" onPress={submit} loading={posting} disabled={!canPost} style={{ paddingHorizontal: 26, height: 46 }} palette={c} />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -471,11 +513,14 @@ function CreatePost({ me, username, avatar, onClose, onCreated }: {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Comments (bottom sheet)
 // ─────────────────────────────────────────────────────────────────────────────
-function ReelComments({ reel, me, onClose, onAdded }: { reel: any; me: number; onClose: () => void; onAdded: () => void }) {
+function ReelComments({ reel, me, onClose, onAdded, onRemoved, styles, c }: { reel: any; me: number; onClose: () => void; onAdded: () => void; onRemoved: () => void; styles: S; c: Palette }) {
   const insets = useSafeAreaInsets();
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  // The post owner can moderate (delete) any comment on their post.
+  const isOwner = Number(reel.userId) === me;
 
   useEffect(() => {
     reelsApi.comments(reel.id)
@@ -489,12 +534,32 @@ function ReelComments({ reel, me, onClose, onAdded }: { reel: any; me: number; o
     if (!t) return;
     setText('');
     try {
-      const c = await reelsApi.comment(reel.id, me, t);
-      setComments((prev) => [...prev, c?.comment || c || { id: Date.now(), text: t, user: { username: 'You' } }]);
+      const c2 = await reelsApi.comment(reel.id, me, t);
+      setComments((prev) => [...prev, c2?.comment || c2 || { id: Date.now(), text: t, author: { username: 'You' } }]);
       onAdded();
     } catch {
       setText(t);
     }
+  };
+
+  const remove = (commentId: number) => {
+    Alert.alert('Удалить комментарий', 'Удалить этот комментарий?', [
+      { text: 'Отмена', style: 'cancel' },
+      { text: 'Удалить', style: 'destructive', onPress: async () => {
+        setDeletingId(commentId);
+        const prev = comments;
+        setComments((cs) => cs.filter((x) => Number(x.id) !== commentId));
+        try {
+          await reelsApi.deleteComment(commentId, me);
+          onRemoved();
+        } catch {
+          setComments(prev); // restore on failure
+          Alert.alert('Не удалось удалить', 'Попробуйте ещё раз.');
+        } finally {
+          setDeletingId(null);
+        }
+      } },
+    ]);
   };
 
   return (
@@ -507,23 +572,36 @@ function ReelComments({ reel, me, onClose, onAdded }: { reel: any; me: number; o
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { alignSelf: 'center', marginBottom: 12 }]}>Комментарии</Text>
           {loading ? (
-            <View style={{ padding: 30 }}><ActivityIndicator color={colors.accent} /></View>
+            <View style={{ padding: 30 }}><ActivityIndicator color={c.accent} /></View>
           ) : comments.length === 0 ? (
             <Text style={styles.noComments}>Пока нет комментариев.</Text>
           ) : (
             <FlatList
               data={comments}
-              keyExtractor={(c, i) => String(c.id ?? i)}
+              keyExtractor={(c2, i) => String(c2.id ?? i)}
               style={{ maxHeight: 340 }}
-              renderItem={({ item: c }) => (
-                <View style={styles.comment}>
-                  <Avatar name={c.user?.username || c.username} src={c.user?.avatar} size={34} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.commentName}>{c.user?.username || c.username || 'User'}</Text>
-                    <Text style={styles.commentText}>{c.text}</Text>
+              renderItem={({ item: cm }) => {
+                const author = cm.author || cm.user || {};
+                const authorId = Number(author.id ?? cm.userId);
+                const canDelete = isOwner || authorId === me;
+                const cId = Number(cm.id);
+                return (
+                  <View style={styles.comment}>
+                    <Avatar name={author.username || cm.username} src={author.avatar} size={34} palette={c} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.commentName}>{author.username || author.nickname || cm.username || 'User'}</Text>
+                      <Text style={styles.commentText}>{cm.text}</Text>
+                    </View>
+                    {canDelete && (
+                      <Pressable hitSlop={10} onPress={() => remove(cId)} disabled={deletingId === cId} style={styles.commentDel}>
+                        {deletingId === cId
+                          ? <ActivityIndicator size="small" color={c.danger} />
+                          : <Ionicons name="trash-outline" size={16} color={c.danger} />}
+                      </Pressable>
+                    )}
                   </View>
-                </View>
-              )}
+                );
+              }}
             />
           )}
           <View style={styles.commentComposer}>
@@ -531,13 +609,13 @@ function ReelComments({ reel, me, onClose, onAdded }: { reel: any; me: number; o
               value={text}
               onChangeText={setText}
               placeholder="Добавить комментарий…"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={c.textFaint}
               style={styles.commentInput}
               multiline
             />
             <Pressable onPress={add} disabled={!text.trim()} style={{ opacity: text.trim() ? 1 : 0.4 }}>
               <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.send}>
-                <Ionicons name="arrow-up" size={20} color={colors.ink} />
+                <Ionicons name="arrow-up" size={20} color={c.ink} />
               </LinearGradient>
             </Pressable>
           </View>
@@ -547,12 +625,12 @@ function ReelComments({ reel, me, onClose, onAdded }: { reel: any; me: number; o
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   // Header
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  headerTitle: { color: colors.text, fontFamily: font.display, fontSize: 28 },
+  headerTitle: { color: c.text, fontFamily: font.display, fontSize: 28 },
   createBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
 
   // Stories strip
@@ -560,53 +638,54 @@ const styles = StyleSheet.create({
   storiesRow: { paddingHorizontal: 14, gap: 14, paddingBottom: 12 } as any,
   storyItem: { alignItems: 'center', width: 70, gap: 6 },
   ring: { width: 66, height: 66, borderRadius: 33, alignItems: 'center', justifyContent: 'center' },
-  ringInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  ringSeen: { width: 66, height: 66, borderRadius: 33, borderWidth: 2, borderColor: colors.stroke2, alignItems: 'center', justifyContent: 'center' },
-  addBadge: { position: 'absolute', right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: colors.bg, overflow: 'hidden' },
-  storyName: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 12, textAlign: 'center' },
-  stripDivider: { height: 1, backgroundColor: colors.stroke, marginHorizontal: 14, marginBottom: 6 },
+  ringInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' },
+  ringSeen: { width: 66, height: 66, borderRadius: 33, borderWidth: 2, borderColor: c.stroke2, alignItems: 'center', justifyContent: 'center' },
+  addBadge: { position: 'absolute', right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: c.bg, overflow: 'hidden' },
+  storyName: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 12, textAlign: 'center' },
+  stripDivider: { height: 1, backgroundColor: c.stroke, marginHorizontal: 14, marginBottom: 6 },
 
   // Post card
-  card: { backgroundColor: colors.glass2, borderWidth: 1, borderColor: colors.stroke, borderRadius: 20, marginHorizontal: 12, marginTop: 10, paddingTop: 14, paddingBottom: 6, overflow: 'hidden' },
+  card: { backgroundColor: c.glass2, borderWidth: 1, borderColor: c.stroke, borderRadius: 20, marginHorizontal: 12, marginTop: 10, paddingTop: 14, paddingBottom: 6, overflow: 'hidden' },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, marginBottom: 10 },
-  authorName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 15 },
-  postTime: { color: colors.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
-  followBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderColor: colors.accent, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  followText: { color: colors.accent, fontFamily: font.bodySemi, fontSize: 12.5 },
+  authorName: { color: c.text, fontFamily: font.bodySemi, fontSize: 15 },
+  postTime: { color: c.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
+  followBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderColor: c.accent, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  followText: { color: c.accent, fontFamily: font.bodySemi, fontSize: 12.5 },
   moreBtn: { paddingHorizontal: 4 },
-  caption: { color: colors.text, fontFamily: font.body, fontSize: 15, lineHeight: 21, paddingHorizontal: 14, marginBottom: 12 },
+  caption: { color: c.text, fontFamily: font.body, fontSize: 15, lineHeight: 21, paddingHorizontal: 14, marginBottom: 12 },
   captionBig: { fontSize: 18, lineHeight: 26, fontFamily: font.bodyMed, paddingVertical: 6 },
   media: { width: '100%', aspectRatio: 1, backgroundColor: '#000' },
   playOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   muteBtn: { position: 'absolute', right: 12, bottom: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-  tags: { color: colors.accent, fontFamily: font.bodyMed, fontSize: 13.5, paddingHorizontal: 14, paddingTop: 10 },
+  tags: { color: c.accent, fontFamily: font.bodyMed, fontSize: 13.5, paddingHorizontal: 14, paddingTop: 10 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingTop: 10 },
   actBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-  actLabel: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 13.5 },
+  actLabel: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 13.5 },
 
   // Modals
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
-  sheet: { backgroundColor: colors.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: colors.stroke, paddingHorizontal: 16, paddingTop: 10 },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.stroke2, marginBottom: 12 },
+  sheet: { backgroundColor: c.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: c.stroke, paddingHorizontal: 16, paddingTop: 10 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.stroke2, marginBottom: 12 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sheetCancel: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 15 },
-  sheetTitle: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
+  sheetCancel: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 15 },
+  sheetTitle: { color: c.text, fontFamily: font.bodySemi, fontSize: 17 },
   composerRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  captionInput: { flex: 1, color: colors.text, fontFamily: font.body, fontSize: 16, lineHeight: 22, minHeight: 80, maxHeight: 180, paddingTop: 8, textAlignVertical: 'top' },
+  captionInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 16, lineHeight: 22, minHeight: 80, maxHeight: 180, paddingTop: 8, textAlignVertical: 'top' },
   preview: { height: 200, borderRadius: 16, overflow: 'hidden', marginTop: 12, backgroundColor: '#000' },
   previewVideo: { alignItems: 'center', justifyContent: 'center', gap: 8 },
   previewVideoText: { color: '#fff', fontFamily: font.bodyMed, fontSize: 13, paddingHorizontal: 20 },
   previewRemove: { position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
   toolbar: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   toolBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingRight: 12 },
-  toolText: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 14 },
+  toolText: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 14 },
 
   // Comments
-  noComments: { color: colors.textFaint, fontFamily: font.body, fontSize: 14, textAlign: 'center', paddingVertical: 26 },
+  noComments: { color: c.textFaint, fontFamily: font.body, fontSize: 14, textAlign: 'center', paddingVertical: 26 },
   comment: { flexDirection: 'row', gap: 10, paddingVertical: 9 },
-  commentName: { color: colors.text, fontFamily: font.bodySemi, fontSize: 13.5 },
-  commentText: { color: colors.textDim, fontFamily: font.body, fontSize: 14, marginTop: 2, lineHeight: 20 },
-  commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.stroke, marginTop: 6 },
-  commentInput: { flex: 1, color: colors.text, fontFamily: font.body, fontSize: 15, maxHeight: 100, backgroundColor: colors.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: colors.stroke },
+  commentName: { color: c.text, fontFamily: font.bodySemi, fontSize: 13.5 },
+  commentText: { color: c.textDim, fontFamily: font.body, fontSize: 14, marginTop: 2, lineHeight: 20 },
+  commentDel: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.stroke, marginTop: 6 },
+  commentInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 15, maxHeight: 100, backgroundColor: c.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: c.stroke },
   send: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

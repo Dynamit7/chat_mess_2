@@ -5,20 +5,25 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useMemo } from 'react';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { groupsApi, channelsApi, UploadAsset } from '@/lib/api';
 import { useAuth } from '@/state/auth';
-import { colors, font } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, Palette } from '@/theme/theme';
 
 export default function EditEntity() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const me = Number(user?.userId);
   const { id, kind } = useLocalSearchParams<{ id: string; kind: string }>();
   const entityId = Number(id);
@@ -75,17 +80,18 @@ export default function EditEntity() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.title}>Редактировать</Text>
         <Pressable hitSlop={12} onPress={() => router.back()}>
-          <Ionicons name="close" size={26} color={colors.text} />
+          <Ionicons name="close" size={26} color={c.text} />
         </Pressable>
       </View>
 
       {fetching ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.accent} size="large" />
+          <ActivityIndicator color={c.accent} size="large" />
         </View>
       ) : (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -94,9 +100,9 @@ export default function EditEntity() {
             keyboardShouldPersistTaps="handled"
           >
             <Pressable onPress={pickAvatar} style={styles.avatarPick}>
-              <Avatar name={name} src={avatarUri || existingAvatar || undefined} size={92} ring />
+              <Avatar name={name} src={avatarUri || existingAvatar || undefined} size={92} ring palette={c} />
               <View style={styles.avatarEdit}>
-                <Ionicons name="camera" size={15} color={colors.ink} />
+                <Ionicons name="camera" size={15} color={c.ink} />
               </View>
             </Pressable>
 
@@ -106,6 +112,7 @@ export default function EditEntity() {
               placeholder={isGroup ? 'Название группы' : 'Название канала'}
               value={name}
               onChangeText={setName}
+              palette={c}
             />
 
             <View style={styles.toggleRow}>
@@ -118,8 +125,8 @@ export default function EditEntity() {
               <Switch
                 value={isPublic}
                 onValueChange={setIsPublic}
-                trackColor={{ true: colors.accent, false: colors.stroke2 }}
-                thumbColor={colors.white}
+                trackColor={{ true: c.accent, false: c.stroke2 }}
+                thumbColor={c.white}
               />
             </View>
 
@@ -129,6 +136,7 @@ export default function EditEntity() {
               loading={saving}
               disabled={!name.trim()}
               style={{ marginTop: 8 }}
+              palette={c}
             />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -137,26 +145,26 @@ export default function EditEntity() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 22, paddingBottom: 16,
   },
-  title: { color: colors.text, fontFamily: font.display, fontSize: 24 },
+  title: { color: c.text, fontFamily: font.display, fontSize: 24 },
   avatarPick: { alignSelf: 'center', marginTop: 6 },
   avatarEdit: {
     position: 'absolute', right: -2, bottom: -2,
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: colors.bg,
+    borderWidth: 3, borderColor: c.bg,
   },
   toggleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.stroke,
+    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke,
     borderRadius: 14, padding: 16,
   },
-  toggleLabel: { color: colors.text, fontFamily: font.bodySemi, fontSize: 15 },
-  toggleSub: { color: colors.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 2 },
+  toggleLabel: { color: c.text, fontFamily: font.bodySemi, fontSize: 15 },
+  toggleSub: { color: c.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 2 },
 });

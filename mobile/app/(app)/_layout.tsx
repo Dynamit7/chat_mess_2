@@ -1,40 +1,35 @@
-import { useState, useEffect } from 'react';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/state/auth';
-import { useSocket } from '@/state/socket';
+import { useCall } from '@/state/call';
 import { IncomingCallModal } from '@/components/calls/IncomingCallModal';
-import { colors } from '@/theme/theme';
-
-type IncomingCallData = { callerId: number; callerName: string; callerPicture?: string; isVideo?: boolean };
+import { useNotificationRouting } from '@/lib/useNotificationRouting';
+import { useTheme } from '@/theme/ThemeContext';
 
 export default function AppLayout() {
   const { isReady, isAuthed } = useAuth();
-  const socket = useSocket();
   const router = useRouter();
-  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const { c } = useTheme();
+  const call = useCall();
 
-  useEffect(() => {
-    const onIncoming = (data: IncomingCallData) => setIncomingCall(data);
-    socket.on('incomingCall', onIncoming);
-    return () => { socket.off('incomingCall', onIncoming); };
-  }, [socket]);
+  // Tapping a push notification routes to the relevant chat/group/channel.
+  useNotificationRouting(isReady && isAuthed);
 
-  const acceptCall = () => {
-    if (!incomingCall) return;
-    socket.emit('acceptCall', { to: incomingCall.callerId });
-    const call = incomingCall;
-    setIncomingCall(null);
+  const incomingCall = call.status === 'incoming' && call.peer
+    ? { callerId: call.peer.id, callerName: call.peer.name, callerPicture: call.peer.avatar, isVideo: call.isVideo }
+    : null;
+
+  const acceptCall = async () => {
+    if (!call.peer) return;
+    const peer = call.peer;
+    const video = call.isVideo;
+    await call.acceptCall();
     router.push({
       pathname: '/(app)/call/[id]',
-      params: { id: String(call.callerId), name: call.callerName, avatar: call.callerPicture || '', incoming: 'true' },
+      params: { id: String(peer.id), name: peer.name, avatar: peer.avatar || '', video: video ? 'true' : 'false' },
     });
   };
 
-  const declineCall = () => {
-    if (!incomingCall) return;
-    socket.emit('declineCall', { to: incomingCall.callerId });
-    setIncomingCall(null);
-  };
+  const declineCall = () => call.declineCall();
 
   if (isReady && !isAuthed) return <Redirect href="/(auth)/login" />;
 
@@ -43,7 +38,7 @@ export default function AppLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
+          contentStyle: { backgroundColor: c.bg },
           animation: 'slide_from_right',
         }}
       >
@@ -52,7 +47,12 @@ export default function AppLayout() {
         <Stack.Screen name="group/[id]" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="channel/[id]" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="call/[id]" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
-        <Stack.Screen name="settings" options={{ presentation: 'card' }} />
+        <Stack.Screen name="settings/index" options={{ presentation: 'card' }} />
+        <Stack.Screen name="settings/privacy" options={{ presentation: 'card' }} />
+        <Stack.Screen name="settings/security" options={{ presentation: 'card' }} />
+        <Stack.Screen name="settings/appearance" options={{ presentation: 'card' }} />
+        <Stack.Screen name="settings/translation" options={{ presentation: 'card' }} />
+        <Stack.Screen name="settings/blocked" options={{ presentation: 'card' }} />
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="new-chat" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="create/[kind]" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

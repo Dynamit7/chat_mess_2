@@ -31,6 +31,15 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = sessionCache.getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // For multipart uploads the platform (RN/browser) must set Content-Type itself
+  // so the multipart boundary is included. A manually-forced "multipart/form-data"
+  // header has no boundary, so the backend (multer) can't parse the file and
+  // req.file ends up empty — e.g. avatars never get saved. Drop it for FormData.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    const h: any = config.headers;
+    if (h && typeof h.delete === 'function') h.delete('Content-Type');
+    else { delete h?.['Content-Type']; delete h?.['content-type']; }
+  }
   return config;
 });
 
@@ -197,11 +206,22 @@ export type ForwardPayload = {
   senderUsername: string;
 };
 
+export type MessagePage = { messages: Message[]; hasMore: boolean; nextBefore: number | null };
+
 export const messagesApi = {
   getChats: (userId: number): Promise<ChatSummary[]> =>
     api.get('/api/messages/getChats', { params: { userId } }).then((r) => r.data),
   getMessages: (user1: number, user2: number): Promise<Message[]> =>
     api.get('/api/messages/getMessages', { params: { user1, user2 } }).then((r) => r.data),
+  /**
+   * Paginated history: returns the newest `limit` messages older than `before`
+   * (a message id cursor), in chronological (ASC) order, plus `hasMore` and the
+   * `nextBefore` cursor for loading the previous page.
+   */
+  getMessagesPage: (user1: number, user2: number, limit = 40, before?: number | null): Promise<MessagePage> =>
+    api
+      .get('/api/messages/getMessages', { params: { user1, user2, limit, before: before ?? undefined } })
+      .then((r) => r.data),
   send: (p: Record<string, unknown>) =>
     api.post('/api/messages/sendMessage', p).then((r) => r.data),
   markAsRead: (currentUserId: number, partnerId: number) =>
@@ -249,6 +269,21 @@ export const groupsApi = {
   // Group message history is protobuf binary.
   messagesRaw: (groupId: number, userId: number) =>
     api.get(`/api/groups/${groupId}/messages`, { params: { userId }, responseType: 'arraybuffer' }).then((r) => r.data as ArrayBuffer),
+  /**
+   * Paginated group history (newest `limit` messages older than `before`).
+   * Body stays protobuf; the cursor rides in X-Has-More / X-Next-Before headers.
+   */
+  messagesRawPage: (groupId: number, userId: number, limit = 40, before?: number | null) =>
+    api
+      .get(`/api/groups/${groupId}/messages`, {
+        params: { userId, limit, before: before ?? undefined },
+        responseType: 'arraybuffer',
+      })
+      .then((r) => ({
+        buffer: r.data as ArrayBuffer,
+        hasMore: r.headers['x-has-more'] === '1',
+        nextBefore: r.headers['x-next-before'] ? Number(r.headers['x-next-before']) : null,
+      })),
   create: async (p: { userId: number; name: string; description?: string; isPublic?: boolean; members?: number[]; avatar?: UploadAsset }) =>
     api.post('/api/groups', await toForm(p), mp).then((r) => r.data),
   sendMessage: async (groupId: number, p: { userId: number; text?: string; replyToId?: number; file?: UploadAsset; messageType?: string }) =>
@@ -283,6 +318,11 @@ export const channelsApi = {
   members: (channelId: number, userId: number) =>
     api.get(`/api/channels/members/${channelId}`, { params: { userId } }).then((r) => r.data),
   messages: (channelId: number) => api.get(`/api/channels/${channelId}/messages`).then((r) => r.data),
+  /** Paginated channel posts: { messages, hasMore, nextBefore } (chronological). */
+  messagesPage: (channelId: number, limit = 40, before?: number | null): Promise<{ messages: any[]; hasMore: boolean; nextBefore: number | null }> =>
+    api
+      .get(`/api/channels/${channelId}/messages`, { params: { limit, before: before ?? undefined } })
+      .then((r) => r.data),
   comments: (channelId: number, messageId: number) =>
     api.get(`/api/channels/${channelId}/message/${messageId}/comments`).then((r) => r.data),
   unreadCounts: (userId: number) => api.get(`/api/channels/${userId}/unread-counts`).then((r) => r.data),
@@ -320,7 +360,7 @@ export const channelsApi = {
 export const reelsApi = {
   feed: (userId: number, page = 1) =>
     api.get('/api/reels/feed', { params: { userId, page } }).then((r) => r.data),
-  discover: (page = 1) => api.get('/api/reels/discover', { params: { page } }).then((r) => r.data),
+  discover: (page = 1, userId?: number) => api.get('/api/reels/discover', { params: { page, userId } }).then((r) => r.data),
   userReels: (userId: number) => api.get(`/api/reels/user/${userId}`).then((r) => r.data),
   /** Universal feed post: image, video, or text-only (no media). */
   create: async (p: { userId: number; caption?: string; hashtags?: string[]; media?: UploadAsset; mediaType: 'image' | 'video' | 'text' }) =>
@@ -332,6 +372,8 @@ export const reelsApi = {
   comments: (reelId: number, page = 1) => api.get(`/api/reels/${reelId}/comments`, { params: { page } }).then((r) => r.data),
   comment: (reelId: number, userId: number, text: string, parentCommentId?: number) =>
     api.post(`/api/reels/${reelId}/comment`, { userId, text, parentCommentId }).then((r) => r.data),
+  deleteComment: (commentId: number, userId: number) =>
+    api.delete(`/api/reels/comment/${commentId}`, { data: { userId } }).then((r) => r.data),
   follow: (followerId: number, followingId: number) =>
     api.post('/api/reels/follow', { followerId, followingId }).then((r) => r.data),
 };
@@ -367,6 +409,17 @@ export const pollsApi = {
 // ---------------------------------------------------------------------------
 // User settings (privacy, 2FA, translation)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Calls (WebRTC ICE servers)
+// ---------------------------------------------------------------------------
+
+export type IceServer = { urls: string | string[]; username?: string; credential?: string };
+
+export const callsApi = {
+  iceServers: (): Promise<{ iceServers: IceServer[] }> =>
+    api.get('/api/calls/ice-servers').then((r) => r.data),
+};
 
 export const settingsApi = {
   getPrivacy: (userId: number) => api.get(`/api/users/${userId}/privacy`).then((r) => r.data),

@@ -54,3 +54,41 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null;
   }
 }
+
+/** Data payload attached to a push by the backend (`{ type, ...data }`). */
+export type PushData = Record<string, any>;
+
+/** Same Expo-Go / web guard as registration: remote push isn't available there. */
+function pushUnavailable() {
+  return Platform.OS === 'web' || Constants.executionEnvironment === 'storeClient';
+}
+
+/**
+ * Subscribe to taps on a notification (app foreground/background). Returns an
+ * unsubscribe fn, or null when remote push isn't available (Expo Go / web).
+ */
+export function addNotificationResponseListener(handler: (data: PushData) => void): (() => void) | null {
+  if (pushUnavailable()) return null;
+  const Notifications = require('expo-notifications');
+  const sub = Notifications.addNotificationResponseReceivedListener((response: any) => {
+    const data = response?.notification?.request?.content?.data;
+    if (data) handler(data);
+  });
+  return () => sub.remove();
+}
+
+/**
+ * Returns the notification the app was cold-started from (tapped while killed),
+ * with its unique `id`. On some platforms `getLastNotificationResponseAsync`
+ * keeps returning the same response on every launch, so the caller must dedupe
+ * on `id` to avoid navigating on an ordinary app open.
+ */
+export async function getInitialNotificationData(): Promise<{ id: string; data: PushData } | null> {
+  if (pushUnavailable()) return null;
+  const Notifications = require('expo-notifications');
+  const response = await Notifications.getLastNotificationResponseAsync();
+  const data = response?.notification?.request?.content?.data;
+  if (!data) return null;
+  const id = response?.notification?.request?.identifier || JSON.stringify(data);
+  return { id: String(id), data };
+}

@@ -1,18 +1,20 @@
 import { View, StyleSheet, ViewStyle, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode } from 'react';
-import { colors } from '@/theme/theme';
+import { colors, Palette } from '@/theme/theme';
 
 const { width: W, height: H } = Dimensions.get('window');
 
 /**
  * Rossi canvas. A midnight-purple stage lit by a single violet bloom in
- * the top-left — premium and minimal, never decorative. (Component + props kept
- * identical so every screen inherits the new look.)
+ * the top-left — premium and minimal, never decorative.
+ *
+ * Pass `palette` to theme it; defaults to the dark palette so screens not yet
+ * migrated to the theme hook keep their look unchanged.
  */
-export function AuroraBackground({ children, style }: { children?: ReactNode; style?: ViewStyle }) {
+export function AuroraBackground({ children, style, palette = colors }: { children?: ReactNode; style?: ViewStyle; palette?: Palette }) {
   return (
-    <View style={[styles.root, style]}>
+    <View style={[styles.root, { backgroundColor: palette.bg }, style]}>
       {/* Violet glow anchored top-left — the one source of colour on midnight. */}
       <LinearGradient
         colors={['rgba(124,77,255,0.20)', 'rgba(124,77,255,0)']}
@@ -36,7 +38,7 @@ export function AuroraBackground({ children, style }: { children?: ReactNode; st
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg, overflow: 'hidden' },
+  root: { flex: 1, overflow: 'hidden' },
   bloom: { position: 'absolute', borderRadius: 9999 },
   content: { flex: 1 },
 });

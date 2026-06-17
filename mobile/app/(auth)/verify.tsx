@@ -10,12 +10,14 @@ import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { authApi } from '@/lib/api';
 import { useAuth } from '@/state/auth';
+import { useT } from '@/i18n';
 import { colors, font, gradients, shadow } from '@/theme/theme';
 
 export default function Verify() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
+  const { t } = useT();
   const { userId, email } = useLocalSearchParams<{ userId: string; email: string }>();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,7 +57,7 @@ export default function Verify() {
         <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 }]}>
           <Pressable hitSlop={10} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/login'))} style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={colors.textDim} />
-            <Text style={styles.backText}>Назад</Text>
+            <Text style={styles.backText}>{t('common.back')}</Text>
           </Pressable>
 
           <View style={styles.center}>
@@ -68,10 +70,10 @@ export default function Verify() {
               </View>
             </Reveal>
 
-            <Reveal delay={150}><Text style={styles.title}>Проверьте почту</Text></Reveal>
+            <Reveal delay={150}><Text style={styles.title}>{t('auth.checkEmail')}</Text></Reveal>
             <Reveal delay={220}>
               <Text style={styles.subtitle}>
-                Введите 6-значный код, отправленный на{'\n'}
+                {t('auth.codeSentTo')}
                 <Text style={styles.email}>{email}</Text>
               </Text>
             </Reveal>
@@ -88,7 +90,7 @@ export default function Verify() {
             ) : null}
 
             <Reveal delay={380} style={{ width: '100%', marginTop: 30 }}>
-              <Button label="Подтвердить" onPress={() => submit()} loading={loading} />
+              <Button label={t('auth.confirm')} onPress={() => submit()} loading={loading} />
             </Reveal>
           </View>
         </View>

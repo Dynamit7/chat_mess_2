@@ -1,7 +1,8 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
-import { colors, font } from '@/theme/theme';
+import { font } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 const fmt = (s: number) => {
   const sec = Math.max(0, Math.floor(s));
@@ -10,6 +11,7 @@ const fmt = (s: number) => {
 
 /** Inline voice-note player: play/pause, progress track and elapsed/total time. */
 export function VoiceMessage({ uri, isOut }: { uri: string; isOut: boolean }) {
+  const { c } = useTheme();
   const player = useAudioPlayer(uri);
   const status = useAudioPlayerStatus(player);
 
@@ -27,19 +29,19 @@ export function VoiceMessage({ uri, isOut }: { uri: string; isOut: boolean }) {
     player.play();
   };
 
-  const fg = isOut ? colors.white : colors.accent;
-  const track = isOut ? 'rgba(255,255,255,0.3)' : colors.stroke2;
+  const fg = isOut ? c.white : c.accent;
+  const track = isOut ? 'rgba(255,255,255,0.3)' : c.stroke2;
 
   return (
     <Pressable onPress={toggle} style={styles.row}>
-      <View style={[styles.btn, { backgroundColor: isOut ? 'rgba(255,255,255,0.18)' : colors.accentSoft }]}>
+      <View style={[styles.btn, { backgroundColor: isOut ? 'rgba(255,255,255,0.18)' : c.accentSoft }]}>
         <Ionicons name={playing ? 'pause' : 'play'} size={18} color={fg} />
       </View>
       <View style={styles.body}>
         <View style={[styles.track, { backgroundColor: track }]}>
           <View style={[styles.fill, { width: `${pct * 100}%`, backgroundColor: fg }]} />
         </View>
-        <Text style={[styles.time, { color: isOut ? 'rgba(255,255,255,0.72)' : colors.textFaint }]}>
+        <Text style={[styles.time, { color: isOut ? 'rgba(255,255,255,0.72)' : c.textFaint }]}>
           {fmt(playing || position > 0 ? position : duration)}
         </Text>
       </View>

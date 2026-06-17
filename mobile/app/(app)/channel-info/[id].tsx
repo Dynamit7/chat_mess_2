@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,12 +10,17 @@ import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { channelsApi } from '@/lib/api';
 import { useAuth } from '@/state/auth';
-import { colors, font, gradients } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, gradients, Palette } from '@/theme/theme';
+
+type S = ReturnType<typeof makeStyles>;
 
 export default function ChannelInfoScreen() {
   const { user: me, isReady } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams<{ id: string; name?: string; avatar?: string; isMember?: string; members?: string }>();
   const channelId = Number(params.id);
   const myId = Number(me?.userId);
@@ -102,11 +108,12 @@ export default function ChannelInfoScreen() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable hitSlop={12} onPress={goBack} style={styles.iconBtn}>
-          <Ionicons name="chevron-back" size={26} color={colors.text} />
+          <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Канал</Text>
         {isOwner ? (
@@ -115,7 +122,7 @@ export default function ChannelInfoScreen() {
             style={styles.iconBtn}
             onPress={() => router.push({ pathname: '/(app)/edit/[id]', params: { id: String(channelId), kind: 'channel' } })}
           >
-            <Ionicons name="create-outline" size={24} color={colors.accent} />
+            <Ionicons name="create-outline" size={24} color={c.accent} />
           </Pressable>
         ) : (
           <View style={{ width: 40 }} />
@@ -123,7 +130,7 @@ export default function ChannelInfoScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.accent} size="large" /></View>
+        <View style={styles.center}><ActivityIndicator color={c.accent} size="large" /></View>
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -131,18 +138,18 @@ export default function ChannelInfoScreen() {
         >
           {/* Hero */}
           <View style={styles.hero}>
-            <Avatar name={name} src={avatar} size={100} ring />
+            <Avatar name={name} src={avatar} size={100} ring palette={c} />
             <Text style={styles.heroName}>{name}</Text>
             <Text style={styles.heroSub}>{subCount} подписчиков · Канал</Text>
           </View>
 
           {/* Quick actions */}
           <View style={styles.actions}>
-            <ActionChip icon="megaphone" label="Открыть" onPress={openChannel} />
+            <ActionChip icon="megaphone" label="Открыть" onPress={openChannel} styles={styles} c={c} />
             {isMember ? (
-              <ActionChip icon="exit-outline" label="Отписаться" onPress={leave} danger loading={leaving} />
+              <ActionChip icon="exit-outline" label="Отписаться" onPress={leave} danger loading={leaving} styles={styles} c={c} />
             ) : (
-              <ActionChip icon="add-circle" label="Подписаться" onPress={join} loading={leaving} />
+              <ActionChip icon="add-circle" label="Подписаться" onPress={join} loading={leaving} styles={styles} c={c} />
             )}
           </View>
 
@@ -150,9 +157,9 @@ export default function ChannelInfoScreen() {
           {channel?.description ? (
             <>
               <Text style={styles.section}>О канале</Text>
-              <GlassCard padded={false}>
+              <GlassCard padded={false} palette={c}>
                 <View style={styles.descRow}>
-                  <View style={styles.infoIcon}><Ionicons name="information-circle-outline" size={18} color={colors.accent} /></View>
+                  <View style={styles.infoIcon}><Ionicons name="information-circle-outline" size={18} color={c.accent} /></View>
                   <Text style={styles.descText}>{channel.description}</Text>
                 </View>
               </GlassCard>
@@ -161,16 +168,16 @@ export default function ChannelInfoScreen() {
 
           {/* Info */}
           <Text style={styles.section}>Информация</Text>
-          <GlassCard padded={false}>
-            <InfoRow icon="people-outline" label="Подписчиков" value={String(subCount)} />
-            <InfoRow icon="lock-closed-outline" label="Тип" value={channel?.isPublic ? 'Публичный' : 'Приватный'} last />
+          <GlassCard padded={false} palette={c}>
+            <InfoRow icon="people-outline" label="Подписчиков" value={String(subCount)} styles={styles} c={c} />
+            <InfoRow icon="lock-closed-outline" label="Тип" value={channel?.isPublic ? 'Публичный' : 'Приватный'} last styles={styles} c={c} />
           </GlassCard>
 
           {/* Members — only for channel owner */}
           {isOwner && members.length > 0 && (
             <>
               <Text style={styles.section}>Участники</Text>
-              <GlassCard padded={false}>
+              <GlassCard padded={false} palette={c}>
                 {members.map((m: any, i: number) => {
                   const mId = Number(m.userId ?? m.id);
                   const mName = m.username || m.nickname || `User ${mId}`;
@@ -185,7 +192,7 @@ export default function ChannelInfoScreen() {
                         style={styles.memberInfo}
                         onPress={() => router.push({ pathname: '/(app)/user/[id]', params: { id: String(mId), name: mName, avatar: m.avatar || m.picture || '' } })}
                       >
-                        <Avatar name={mName} src={m.avatar || m.picture} size={42} />
+                        <Avatar name={mName} src={m.avatar || m.picture} size={42} palette={c} />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.memberName}>{mName}</Text>
                           {isMe && <Text style={styles.memberRole}>Вы (владелец)</Text>}
@@ -199,8 +206,8 @@ export default function ChannelInfoScreen() {
                           disabled={isRemoving}
                         >
                           {isRemoving
-                            ? <ActivityIndicator size="small" color={colors.danger} />
-                            : <Ionicons name="person-remove-outline" size={20} color={colors.danger} />
+                            ? <ActivityIndicator size="small" color={c.danger} />
+                            : <Ionicons name="person-remove-outline" size={20} color={c.danger} />
                           }
                         </Pressable>
                       )}
@@ -226,7 +233,7 @@ export default function ChannelInfoScreen() {
 
             <View style={styles.sheetIconWrap}>
               <View style={styles.sheetIconBg}>
-                <Ionicons name="person-remove-outline" size={28} color={colors.danger} />
+                <Ionicons name="person-remove-outline" size={28} color={c.danger} />
               </View>
             </View>
 
@@ -250,71 +257,71 @@ export default function ChannelInfoScreen() {
   );
 }
 
-function ActionChip({ icon, label, onPress, danger, loading: isLoading }: { icon: any; label: string; onPress: () => void; danger?: boolean; loading?: boolean }) {
+function ActionChip({ icon, label, onPress, danger, loading: isLoading, styles, c }: { icon: any; label: string; onPress: () => void; danger?: boolean; loading?: boolean; styles: S; c: Palette }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.chip, pressed && { opacity: 0.7 }]}>
       {danger ? (
-        <View style={[styles.chipIcon, { backgroundColor: colors.danger }]}>
+        <View style={[styles.chipIcon, { backgroundColor: c.danger }]}>
           {isLoading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name={icon} size={20} color="#fff" />}
         </View>
       ) : (
         <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.chipIcon}>
-          {isLoading ? <ActivityIndicator size="small" color={colors.ink} /> : <Ionicons name={icon} size={20} color={colors.ink} />}
+          {isLoading ? <ActivityIndicator size="small" color={c.ink} /> : <Ionicons name={icon} size={20} color={c.ink} />}
         </LinearGradient>
       )}
-      <Text style={[styles.chipLabel, danger && { color: colors.danger }]}>{label}</Text>
+      <Text style={[styles.chipLabel, danger && { color: c.danger }]}>{label}</Text>
     </Pressable>
   );
 }
 
-function InfoRow({ icon, label, value, last }: { icon: any; label: string; value: string; last?: boolean }) {
+function InfoRow({ icon, label, value, last, styles, c }: { icon: any; label: string; value: string; last?: boolean; styles: S; c: Palette }) {
   return (
     <View style={[styles.infoRow, !last && styles.infoRowBorder]}>
-      <View style={styles.infoIcon}><Ionicons name={icon} size={18} color={colors.accent} /></View>
+      <View style={styles.infoIcon}><Ionicons name={icon} size={18} color={c.accent} /></View>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 12, paddingBottom: 8,
   },
-  headerTitle: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17 },
+  headerTitle: { color: c.text, fontFamily: font.bodySemi, fontSize: 17 },
   iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   hero: { alignItems: 'center', gap: 10, paddingTop: 24, paddingBottom: 8 },
-  heroName: { color: colors.text, fontFamily: font.display, fontSize: 26, letterSpacing: -0.5 },
-  heroSub: { color: colors.textFaint, fontFamily: font.bodyMed, fontSize: 14 },
+  heroName: { color: c.text, fontFamily: font.display, fontSize: 26, letterSpacing: -0.5 },
+  heroSub: { color: c.textFaint, fontFamily: font.bodyMed, fontSize: 14 },
 
   actions: { flexDirection: 'row', justifyContent: 'center', gap: 32, paddingVertical: 24 },
   chip: { alignItems: 'center', gap: 8 },
   chipIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  chipLabel: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 12 },
+  chipLabel: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 12 },
 
   section: {
-    color: colors.textFaint, fontFamily: font.bodySemi, fontSize: 12,
+    color: c.textFaint, fontFamily: font.bodySemi, fontSize: 12,
     letterSpacing: 1, textTransform: 'uppercase',
     marginTop: 22, marginBottom: 10, marginLeft: 24,
   },
 
   descRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, padding: 16 },
-  descText: { flex: 1, color: colors.textDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
+  descText: { flex: 1, color: c.textDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 15 },
-  infoRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.stroke },
-  infoIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  infoLabel: { flex: 1, color: colors.text, fontFamily: font.bodyMed, fontSize: 15 },
-  infoValue: { color: colors.textDim, fontFamily: font.body, fontSize: 14 },
+  infoRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.stroke },
+  infoIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  infoLabel: { flex: 1, color: c.text, fontFamily: font.bodyMed, fontSize: 15 },
+  infoValue: { color: c.textDim, fontFamily: font.body, fontSize: 14 },
 
   memberRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-  memberBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.stroke },
+  memberBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.stroke },
   memberInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  memberName: { color: colors.text, fontFamily: font.bodyMed, fontSize: 15 },
-  memberRole: { color: colors.accent, fontFamily: font.body, fontSize: 12, marginTop: 1 },
+  memberName: { color: c.text, fontFamily: font.bodyMed, fontSize: 15 },
+  memberRole: { color: c.accent, fontFamily: font.body, fontSize: 12, marginTop: 1 },
   removeBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 
   // Modal
@@ -323,14 +330,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.surface ?? '#1a1a2e',
+    backgroundColor: c.surface ?? '#1a1a2e',
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingHorizontal: 24, paddingBottom: 36, paddingTop: 12,
     alignItems: 'center',
   },
   sheetHandle: {
     width: 40, height: 4, borderRadius: 2,
-    backgroundColor: colors.stroke, marginBottom: 24,
+    backgroundColor: c.stroke, marginBottom: 24,
   },
   sheetIconWrap: { marginBottom: 16 },
   sheetIconBg: {
@@ -339,26 +346,26 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sheetTitle: {
-    color: colors.text, fontFamily: font.display,
+    color: c.text, fontFamily: font.display,
     fontSize: 20, marginBottom: 10,
   },
   sheetBody: {
-    color: colors.textDim, fontFamily: font.body,
+    color: c.textDim, fontFamily: font.body,
     fontSize: 15, lineHeight: 22,
     textAlign: 'center', marginBottom: 28,
   },
-  sheetName: { color: colors.text, fontFamily: font.bodySemi },
+  sheetName: { color: c.text, fontFamily: font.bodySemi },
   btnDanger: {
     width: '100%', height: 52, borderRadius: 16,
-    backgroundColor: colors.danger,
+    backgroundColor: c.danger,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 10,
   },
   btnDangerText: { color: '#fff', fontFamily: font.bodySemi, fontSize: 16 },
   btnCancel: {
     width: '100%', height: 52, borderRadius: 16,
-    backgroundColor: colors.accentSoft ?? 'rgba(255,255,255,0.08)',
+    backgroundColor: c.accentSoft ?? 'rgba(255,255,255,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  btnCancelText: { color: colors.text, fontFamily: font.bodyMed, fontSize: 16 },
+  btnCancelText: { color: c.text, fontFamily: font.bodyMed, fontSize: 16 },
 });

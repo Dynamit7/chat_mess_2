@@ -76,10 +76,12 @@ router.post("/", uploadLarge.single("avatar"), async (req, res) => {
     const groupPlain = newGroup.get({ plain: true });
     groupPlain.members = allMembers;
 
-    await Promise.all(allMembers.map(async (mId) => {
+    // Инвалидируем кэш ПЕРЕД эмитом: иначе клиент по событию groupCreated успеет
+    // перезагрузить список и прочитать ещё не сброшенный кэш (без новой группы).
+    await Promise.all(allMembers.map((mId) => invalidateGroupsList(mId)));
+    allMembers.forEach((mId) => {
       req.io.to(`user_${mId}`).emit("groupCreated", groupPlain);
-      await invalidateGroupsList(mId);
-    }));
+    });
 
     return res.json(newGroup);
   } catch (err) {
@@ -461,10 +463,62 @@ router.post("/:groupId/message", uploadLarge.single("file"), async (req, res) =>
   }
 });
 
+// Строит protobuf-сообщение группы из строки БД (Sequelize-модель) либо из
+// объекта кэша. Текст расшифровывается только для моделей — в кэше он уже plain.
+function buildGroupProtoMessage(msg, groupId, userIdNum) {
+  const protoMessage = new chat.GroupMessage();
+  protoMessage.id = msg.id;
+  protoMessage.groupId = Number(groupId);
+  protoMessage.userId = msg.userId;
+  protoMessage.text = typeof msg.get === "function" ? (decrypt(msg.text) || "") : (msg.text || "");
+  protoMessage.type = msg.type;
+  if (msg.fileUrl) protoMessage.fileUrl = msg.fileUrl;
+  if (msg.filename) protoMessage.filename = msg.filename;
+  if (msg.replyToId) protoMessage.replyToId = msg.replyToId;
+  const protoSender = new chat.Sender();
+  protoSender.id = msg.sender.id;
+  protoSender.username = msg.sender.username;
+  protoMessage.sender = protoSender;
+  protoMessage.isDeleted = msg.isDeleted;
+  protoMessage.createdAt = new Date(msg.createdAt).getTime();
+  protoMessage.updatedAt = new Date(msg.updatedAt).getTime();
+  protoMessage.readBy = (userIdNum && msg.userId === userIdNum) ? (msg.readBy || [msg.userId]) : [];
+  if (msg.forwardedFromType) protoMessage.forwardedFromType = msg.forwardedFromType;
+  if (msg.forwardedFromId) protoMessage.forwardedFromId = msg.forwardedFromId;
+  if (msg.forwardedFromUsername) protoMessage.forwardedFromUsername = msg.forwardedFromUsername;
+  if (msg.repliedMessage) {
+    const repliedProto = new chat.GroupMessage();
+    repliedProto.id = msg.repliedMessage.id;
+    repliedProto.text = typeof msg.get === "function" ? (decrypt(msg.repliedMessage.text) || "") : (msg.repliedMessage.text || "");
+    repliedProto.type = msg.repliedMessage.type;
+    if (msg.repliedMessage.fileUrl) repliedProto.fileUrl = msg.repliedMessage.fileUrl;
+    if (msg.repliedMessage.filename) repliedProto.filename = msg.repliedMessage.filename;
+    const repliedSender = new chat.Sender();
+    repliedSender.id = msg.repliedMessage.sender.id;
+    repliedSender.username = msg.repliedMessage.sender.username;
+    repliedProto.sender = repliedSender;
+    repliedProto.readBy = (userIdNum && msg.repliedMessage.userId === userIdNum) ?
+      (msg.repliedMessage.readBy || [msg.repliedMessage.userId]) : [];
+    protoMessage.repliedMessage = repliedProto;
+  }
+  return protoMessage;
+}
+
+// Include-набор для загрузки сообщения группы (отправитель, ответ, реакции).
+const GROUP_MESSAGE_INCLUDES = [
+  { model: User, as: "sender", attributes: ["id", "username"] },
+  {
+    model: GroupMessage,
+    as: "repliedMessage",
+    include: [{ model: User, as: "sender", attributes: ["id", "username"] }],
+  },
+  { model: GroupMessageReaction, as: "reactions", attributes: ["id", "userId", "emoji"] },
+];
+
 router.get("/:groupId/messages", async (req, res) => {
   try {
     const { groupId } = req.params;
-    const { userId } = req.query;
+    const { userId, limit, before } = req.query;
 
     if (userId && userId !== "null" && !isNaN(Number(userId))) {
       const userIdNum = Number(userId);
@@ -477,6 +531,36 @@ router.get("/:groupId/messages", async (req, res) => {
           { where: { groupId, userId: userIdNum } }
         );
       }
+    }
+
+    const userIdNumEarly = userId && !isNaN(Number(userId)) ? Number(userId) : null;
+
+    // --- Пагинация (опционально) ------------------------------------------
+    // ?limit=N (&before=<messageId>) — отдаём последние N сообщений старше
+    // курсора как страницу. Курсор пагинации (hasMore / nextBefore) едет в
+    // заголовках X-Has-More / X-Next-Before, т.к. тело — protobuf-бинарь.
+    // Кэш не используется (он хранит всю историю). Без параметров — старое
+    // поведение (вся история + кэш), чтобы не сломать существующих клиентов.
+    if (limit !== undefined) {
+      const pageSize = Math.min(Math.max(parseInt(limit, 10) || 40, 1), 100);
+      const where = { groupId, isDeleted: false };
+      if (before && !isNaN(before)) where.id = { [Op.lt]: parseInt(before, 10) };
+      const rows = await GroupMessage.findAll({
+        where,
+        order: [["createdAt", "DESC"]],
+        limit: pageSize + 1,
+        include: GROUP_MESSAGE_INCLUDES,
+      });
+      const hasMore = rows.length > pageSize;
+      const page = (hasMore ? rows.slice(0, pageSize) : rows).reverse();
+      const protoPage = page.map((msg) => buildGroupProtoMessage(msg, groupId, userIdNumEarly));
+      const wrapper = new chat.GroupMessageList();
+      wrapper.messages = protoPage;
+      const buffer = chat.GroupMessageList.encode(wrapper).finish();
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("X-Has-More", hasMore ? "1" : "0");
+      res.setHeader("X-Next-Before", page.length ? String(page[0].id) : "");
+      return res.send(buffer);
     }
 
     // Проверяем кэш (кэшируем сырые данные, не protobuf)
@@ -518,52 +602,9 @@ router.get("/:groupId/messages", async (req, res) => {
       await cacheGroupMessages(groupId, messagesData);
     }
 
-    const userIdNum = userId && !isNaN(Number(userId)) ? Number(userId) : null;
+    const userIdNum = userIdNumEarly;
 
-    const protoMessages = messages.map((msg) => {
-      const protoMessage = new chat.GroupMessage();
-      protoMessage.id = msg.id;
-      protoMessage.groupId = Number(groupId);
-      protoMessage.userId = msg.userId;
-      // Если msg - это объект из кэша, используем msg.text напрямую (уже расшифрован при кэшировании)
-      // Если это Sequelize модель, расшифровываем
-      protoMessage.text = typeof msg.get === 'function' ? (decrypt(msg.text) || "") : (msg.text || "");
-      protoMessage.type = msg.type;
-      if (msg.fileUrl) protoMessage.fileUrl = msg.fileUrl;
-      if (msg.filename) protoMessage.filename = msg.filename;
-      if (msg.replyToId) protoMessage.replyToId = msg.replyToId;
-      const protoSender = new chat.Sender();
-      protoSender.id = msg.sender.id;
-      protoSender.username = msg.sender.username;
-      protoMessage.sender = protoSender;
-      protoMessage.isDeleted = msg.isDeleted;
-      protoMessage.createdAt = new Date(msg.createdAt).getTime();
-      protoMessage.updatedAt = new Date(msg.updatedAt).getTime();
-      protoMessage.readBy = (userIdNum && msg.userId === userIdNum) ? (msg.readBy || [msg.userId]) : [];
-      if (msg.forwardedFromType) protoMessage.forwardedFromType = msg.forwardedFromType;
-      if (msg.forwardedFromId) protoMessage.forwardedFromId = msg.forwardedFromId;
-      if (msg.forwardedFromUsername) protoMessage.forwardedFromUsername = msg.forwardedFromUsername;
-      if (msg.repliedMessage) {
-        const repliedProto = new chat.GroupMessage();
-        repliedProto.id = msg.repliedMessage.id;
-        // Если msg - это объект из кэша, используем msg.repliedMessage.text напрямую
-        // Если это Sequelize модель, расшифровываем
-        repliedProto.text = typeof msg.get === 'function' ? (decrypt(msg.repliedMessage.text) || "") : (msg.repliedMessage.text || "");
-        repliedProto.type = msg.repliedMessage.type;
-        if (msg.repliedMessage.fileUrl)
-          repliedProto.fileUrl = msg.repliedMessage.fileUrl;
-        if (msg.repliedMessage.filename)
-          repliedProto.filename = msg.repliedMessage.filename;
-        const repliedSender = new chat.Sender();
-        repliedSender.id = msg.repliedMessage.sender.id;
-        repliedSender.username = msg.repliedMessage.sender.username;
-        repliedProto.sender = repliedSender;
-        repliedProto.readBy = (userIdNum && msg.repliedMessage.userId === userIdNum) ? 
-          (msg.repliedMessage.readBy || [msg.repliedMessage.userId]) : [];
-        protoMessage.repliedMessage = repliedProto;
-      }
-      return protoMessage;
-    });
+    const protoMessages = messages.map((msg) => buildGroupProtoMessage(msg, groupId, userIdNum));
 
     const wrapper = new chat.GroupMessageList();
     wrapper.messages = protoMessages;

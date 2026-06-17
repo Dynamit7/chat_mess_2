@@ -9,11 +9,13 @@ import { Reveal } from '@/components/ui/Reveal';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { authApi } from '@/lib/api';
+import { useT } from '@/i18n';
 import { colors, font } from '@/theme/theme';
 
 export default function Login() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,7 +24,7 @@ export default function Login() {
   const onLogin = async () => {
     setError(null);
     if (!email.trim() || !password) {
-      setError('Введите email и пароль.');
+      setError(t('auth.fillEmailPass'));
       return;
     }
     setLoading(true);
@@ -30,7 +32,7 @@ export default function Login() {
       const res = await authApi.login({ email: email.trim(), password });
       router.push({ pathname: '/(auth)/verify', params: { userId: String(res.userId), email: email.trim() } });
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось войти. Проверьте данные.');
+      setError(e?.response?.data?.error || t('auth.loginFailed'));
     } finally {
       setLoading(false);
     }
@@ -48,23 +50,23 @@ export default function Login() {
 
           <View style={styles.hero}>
             <Reveal delay={140}>
-              <Text style={styles.eyebrow}>С ВОЗВРАЩЕНИЕМ</Text>
+              <Text style={styles.eyebrow}>{t('auth.welcomeBack')}</Text>
             </Reveal>
             <Reveal delay={220}>
               <Text style={styles.title}>
-                Продолжите{'\n'}с того же{'\n'}
-                <Text style={styles.titleAccent}>места.</Text>
+                {t('auth.loginTitle')}
+                <Text style={styles.titleAccent}>{t('auth.loginTitleAccent')}</Text>
               </Text>
             </Reveal>
             <Reveal delay={300}>
-              <Text style={styles.subtitle}>Зашифрованные, мгновенные и красиво простые сообщения.</Text>
+              <Text style={styles.subtitle}>{t('auth.loginSubtitle')}</Text>
             </Reveal>
           </View>
 
           <View style={styles.form}>
             <Reveal delay={380}>
               <TextField
-                label="Email"
+                label={t('auth.email')}
                 icon="mail-outline"
                 placeholder="you@example.com"
                 autoCapitalize="none"
@@ -76,7 +78,7 @@ export default function Login() {
             </Reveal>
             <Reveal delay={450}>
               <TextField
-                label="Пароль"
+                label={t('auth.password')}
                 icon="lock-closed-outline"
                 placeholder="••••••••"
                 secure
@@ -94,14 +96,14 @@ export default function Login() {
             ) : null}
 
             <Reveal delay={530}>
-              <Button label="Войти" onPress={onLogin} loading={loading} style={{ marginTop: 8 }} icon={<Ionicons name="arrow-forward" size={18} color={colors.ink} />} />
+              <Button label={t('auth.login')} onPress={onLogin} loading={loading} style={{ marginTop: 8 }} icon={<Ionicons name="arrow-forward" size={18} color={colors.ink} />} />
             </Reveal>
           </View>
 
           <Reveal delay={620} style={styles.footer}>
-            <Text style={styles.footerText}>Впервые в Rossi?</Text>
+            <Text style={styles.footerText}>{t('auth.firstTime')}</Text>
             <Pressable hitSlop={8} onPress={() => router.push('/(auth)/register')}>
-              <Text style={styles.link}>Создать аккаунт</Text>
+              <Text style={styles.link}>{t('auth.createAccount')}</Text>
             </Pressable>
           </Reveal>
         </ScrollView>

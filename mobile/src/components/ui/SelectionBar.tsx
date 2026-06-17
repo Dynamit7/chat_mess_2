@@ -1,6 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font } from '@/theme/theme';
+import { colors, font, Palette } from '@/theme/theme';
 
 /**
  * Top bar shown while a screen is in multi-select mode. Mirrors the height of the
@@ -16,6 +16,7 @@ export function SelectionBar({
   extraActions,
   paddingTop = 0,
   label = 'выбрано',
+  palette = colors,
 }: {
   count: number;
   total?: number;
@@ -26,15 +27,16 @@ export function SelectionBar({
   extraActions?: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void; disabled?: boolean }[];
   paddingTop?: number;
   label?: string;
+  palette?: Palette;
 }) {
   const allSelected = total !== undefined && total > 0 && count >= total;
   return (
-    <View style={[styles.bar, { paddingTop: paddingTop + 8 }]}>
+    <View style={[styles.bar, { paddingTop: paddingTop + 8, borderBottomColor: palette.stroke }]}>
       <Pressable hitSlop={8} onPress={onClose} style={styles.iconBtn}>
-        <Ionicons name="close" size={26} color={colors.text} />
+        <Ionicons name="close" size={26} color={palette.text} />
       </Pressable>
 
-      <Text style={styles.count} numberOfLines={1}>
+      <Text style={[styles.count, { color: palette.text }]} numberOfLines={1}>
         {count} {label}
       </Text>
 
@@ -45,7 +47,7 @@ export function SelectionBar({
           <Ionicons
             name={allSelected ? 'checkmark-circle' : 'ellipse-outline'}
             size={24}
-            color={allSelected ? colors.accent : colors.text}
+            color={allSelected ? palette.accent : palette.text}
           />
         </Pressable>
       ) : null}
@@ -58,7 +60,7 @@ export function SelectionBar({
           disabled={count === 0 || a.disabled}
           style={[styles.iconBtn, (count === 0 || a.disabled) && { opacity: 0.4 }]}
         >
-          <Ionicons name={a.icon} size={22} color={colors.text} />
+          <Ionicons name={a.icon} size={22} color={palette.text} />
         </Pressable>
       ))}
 
@@ -68,7 +70,7 @@ export function SelectionBar({
         disabled={count === 0}
         style={[styles.iconBtn, count === 0 && { opacity: 0.4 }]}
       >
-        <Ionicons name="trash" size={22} color={colors.danger} />
+        <Ionicons name="trash" size={22} color={palette.danger} />
       </Pressable>
     </View>
   );
@@ -82,8 +84,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.stroke,
   },
   iconBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  count: { color: colors.text, fontFamily: font.bodySemi, fontSize: 17, marginLeft: 2 },
+  count: { fontFamily: font.bodySemi, fontSize: 17, marginLeft: 2 },
 });

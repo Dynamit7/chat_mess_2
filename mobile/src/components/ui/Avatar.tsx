@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { colors, avatarGradient, initials, font } from '@/theme/theme';
+import { colors, avatarGradient, initials, font, Palette } from '@/theme/theme';
 import { fixFileUrl } from '@/lib/config';
 
 type Props = {
@@ -10,10 +10,11 @@ type Props = {
   size?: number;
   online?: boolean;
   ring?: boolean;
+  palette?: Palette;
 };
 
 /** Circular avatar: image when present, otherwise a deterministic gradient + initials. */
-export function Avatar({ name, src, size = 48, online, ring }: Props) {
+export function Avatar({ name, src, size = 48, online, ring, palette = colors }: Props) {
   const grad = avatarGradient(name || 'x');
   const url = src ? fixFileUrl(src) : '';
   const dot = Math.max(10, size * 0.26);
@@ -34,12 +35,12 @@ export function Avatar({ name, src, size = 48, online, ring }: Props) {
     <View style={{ width: size, height: size }}>
       {ring ? (
         <LinearGradient
-          colors={[colors.brand1, colors.brand3]}
+          colors={[palette.brand1, palette.brand3]}
           style={{ width: size, height: size, borderRadius: size / 2, padding: 2.5 }}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          <View style={{ flex: 1, borderRadius: size / 2, overflow: 'hidden', backgroundColor: colors.bg }}>{inner}</View>
+          <View style={{ flex: 1, borderRadius: size / 2, overflow: 'hidden', backgroundColor: palette.bg }}>{inner}</View>
         </LinearGradient>
       ) : (
         inner
@@ -48,7 +49,7 @@ export function Avatar({ name, src, size = 48, online, ring }: Props) {
         <View
           style={[
             styles.dot,
-            { width: dot, height: dot, borderRadius: dot / 2, right: 0, bottom: 0, borderWidth: Math.max(2, size * 0.045) },
+            { width: dot, height: dot, borderRadius: dot / 2, right: 0, bottom: 0, borderWidth: Math.max(2, size * 0.045), borderColor: palette.bg },
           ]}
         />
       )}

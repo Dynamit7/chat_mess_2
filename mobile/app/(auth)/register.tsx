@@ -9,12 +9,14 @@ import { Reveal } from '@/components/ui/Reveal';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { authApi } from '@/lib/api';
+import { useT } from '@/i18n';
 import { colors, font, gradients, shadow } from '@/theme/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Register() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,7 +27,7 @@ export default function Register() {
   const onRegister = async () => {
     setError(null);
     if (!username.trim() || !email.trim() || password.length < 6) {
-      setError('Укажите имя пользователя, корректный email и пароль от 6 символов.');
+      setError(t('auth.registerHint'));
       return;
     }
     setLoading(true);
@@ -33,7 +35,7 @@ export default function Register() {
       await authApi.register({ username: username.trim(), email: email.trim(), password });
       setDone(true);
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось создать аккаунт.');
+      setError(e?.response?.data?.error || t('auth.registerFailed'));
     } finally {
       setLoading(false);
     }
@@ -49,7 +51,7 @@ export default function Register() {
         >
           <Pressable hitSlop={10} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/login'))} style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={colors.textDim} />
-            <Text style={styles.backText}>Назад</Text>
+            <Text style={styles.backText}>{t('common.back')}</Text>
           </Pressable>
 
           {done ? (
@@ -62,27 +64,27 @@ export default function Register() {
                   </LinearGradient>
                 </View>
               </Reveal>
-              <Reveal delay={140}><Text style={styles.title}>Всё готово</Text></Reveal>
-              <Reveal delay={210}><Text style={[styles.subtitle, { textAlign: 'center' }]}>Аккаунт создан. Войдите — мы отправим код подтверждения на email.</Text></Reveal>
+              <Reveal delay={140}><Text style={styles.title}>{t('auth.allDone')}</Text></Reveal>
+              <Reveal delay={210}><Text style={[styles.subtitle, { textAlign: 'center' }]}>{t('auth.accountCreated')}</Text></Reveal>
               <Reveal delay={300} style={{ width: '100%', marginTop: 14 }}>
-                <Button label="Перейти ко входу" onPress={() => router.replace('/(auth)/login')} />
+                <Button label={t('auth.goToLogin')} onPress={() => router.replace('/(auth)/login')} />
               </Reveal>
             </View>
           ) : (
             <>
               <Reveal delay={50}><Logo /></Reveal>
               <View style={styles.hero}>
-                <Reveal delay={130}><Text style={styles.eyebrow}>НАЧНЁМ</Text></Reveal>
+                <Reveal delay={130}><Text style={styles.eyebrow}>{t('auth.letsStart')}</Text></Reveal>
                 <Reveal delay={200}>
-                  <Text style={styles.title}>Создайте{'\n'}<Text style={styles.accent}>аккаунт.</Text></Text>
+                  <Text style={styles.title}>{t('auth.createTitle')}<Text style={styles.accent}>{t('auth.createTitleAccent')}</Text></Text>
                 </Reveal>
-                <Reveal delay={280}><Text style={styles.subtitle}>Присоединяйтесь к Rossi за секунды и начните общаться.</Text></Reveal>
+                <Reveal delay={280}><Text style={styles.subtitle}>{t('auth.registerSubtitle')}</Text></Reveal>
               </View>
 
               <View style={styles.form}>
-                <Reveal delay={350}><TextField label="Имя пользователя" icon="person-outline" placeholder="yourname" autoCapitalize="none" value={username} onChangeText={setUsername} /></Reveal>
-                <Reveal delay={410}><TextField label="Email" icon="mail-outline" placeholder="you@example.com" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} /></Reveal>
-                <Reveal delay={470}><TextField label="Пароль" icon="lock-closed-outline" placeholder="Минимум 6 символов" secure value={password} onChangeText={setPassword} onSubmitEditing={onRegister} /></Reveal>
+                <Reveal delay={350}><TextField label={t('auth.username')} icon="person-outline" placeholder="yourname" autoCapitalize="none" value={username} onChangeText={setUsername} /></Reveal>
+                <Reveal delay={410}><TextField label={t('auth.email')} icon="mail-outline" placeholder="you@example.com" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} /></Reveal>
+                <Reveal delay={470}><TextField label={t('auth.password')} icon="lock-closed-outline" placeholder={t('auth.minChars')} secure value={password} onChangeText={setPassword} onSubmitEditing={onRegister} /></Reveal>
 
                 {error ? (
                   <View style={styles.errorRow}>
@@ -91,13 +93,13 @@ export default function Register() {
                   </View>
                 ) : null}
 
-                <Reveal delay={540}><Button label="Создать аккаунт" onPress={onRegister} loading={loading} style={{ marginTop: 6 }} /></Reveal>
+                <Reveal delay={540}><Button label={t('auth.createAccount')} onPress={onRegister} loading={loading} style={{ marginTop: 6 }} /></Reveal>
               </View>
 
               <Reveal delay={620} style={styles.footer}>
-                <Text style={styles.footerText}>Уже есть аккаунт?</Text>
+                <Text style={styles.footerText}>{t('auth.haveAccount')}</Text>
                 <Pressable hitSlop={8} onPress={() => router.replace('/(auth)/login')}>
-                  <Text style={styles.link}>Войти</Text>
+                  <Text style={styles.link}>{t('auth.login')}</Text>
                 </Pressable>
               </Reveal>
             </>

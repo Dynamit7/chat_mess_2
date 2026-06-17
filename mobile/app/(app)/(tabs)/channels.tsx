@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, StyleSheet, FlatList, ActivityIndicator, RefreshControl, Pressable, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
+import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,13 +20,19 @@ import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
-import { colors, gradients, shadow, font, radius } from '@/theme/theme';
+import { useT } from '@/i18n';
+import { useTheme } from '@/theme/ThemeContext';
+import { gradients, shadow, font, radius, Palette } from '@/theme/theme';
 
 export default function ChannelsScreen() {
   const { user } = useAuth();
   const socket = useSocket();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useT();
+  const { c, scheme } = useTheme();
+  const isFocused = useIsFocused();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const me = Number(user?.userId);
 
   const [items, setItems] = useState<Entity[]>([]);
@@ -80,7 +88,9 @@ export default function ChannelsScreen() {
     }
   }, [me]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reload on every focus (mount + returning to the tab), so a freshly created
+  // channel always shows without relying on a socket event that may race/miss.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   useEffect(() => {
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
@@ -168,10 +178,10 @@ export default function ChannelsScreen() {
   const deleteSelected = () => {
     const ids = [...sel.selected];
     if (ids.length === 0) return;
-    Alert.alert('Удалить каналы', `Удалить ${ids.length} ${ids.length === 1 ? 'канал' : 'каналов'} из списка?`, [
-      { text: 'Отмена', style: 'cancel' },
+    Alert.alert(t('channels.deleteTitle'), t('channels.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Удалить',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           const idSet = new Set(ids);
@@ -199,13 +209,15 @@ export default function ChannelsScreen() {
   const displayData = isSearchMode ? searchResults : orderedItems;
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      {isFocused ? <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} /> : null}
       {sel.active ? (
         <SelectionBar
           count={sel.count}
           total={orderedItems.length}
           paddingTop={insets.top}
-          label="каналов"
+          label={t('channels.selLabel')}
+          palette={c}
           onClose={sel.exit}
           onSelectAll={() => sel.selectAll(orderedItems.map((c) => Number(c.id)))}
           extraActions={[
@@ -216,23 +228,23 @@ export default function ChannelsScreen() {
         />
       ) : (
         <ScreenHeader
-          title="Каналы"
-          subtitle={showSearch ? 'Поиск каналов' : (items.length ? `${items.length} ${items.length === 1 ? 'канал' : 'каналов'}` : 'Трансляции, на которые стоит подписаться')}
+          title={t('tabs.channels')}
+          subtitle={showSearch ? t('channels.searchSubtitle') : (items.length ? t('channels.count', { count: items.length }) : undefined)}
+          palette={c}
           actions={[
             { icon: showSearch ? 'close' : 'search', onPress: showSearch ? closeSearch : () => setShowSearch(true) },
-            { icon: 'add', onPress: () => router.push('/(app)/create/channel') },
           ]}
         />
       )}
 
       {showSearch && !sel.active && (
         <View style={styles.searchWrap}>
-          <Ionicons name="search" size={18} color={colors.textFaint} />
+          <Ionicons name="search" size={18} color={c.textFaint} />
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Найти канал по названию..."
-            placeholderTextColor={colors.textFaint}
+            placeholder={t('channels.searchPlaceholder')}
+            placeholderTextColor={c.textFaint}
             style={styles.searchInput}
             autoFocus
             autoCapitalize="none"
@@ -240,7 +252,7 @@ export default function ChannelsScreen() {
           />
           {query.length > 0 && (
             <Pressable hitSlop={8} onPress={() => setQuery('')}>
-              <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+              <Ionicons name="close-circle" size={18} color={c.textFaint} />
             </Pressable>
           )}
         </View>
@@ -249,13 +261,13 @@ export default function ChannelsScreen() {
       <OfflineBanner />
 
       {loading && !showSearch ? (
-        <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+        <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
       ) : isSearchMode && searching ? (
-        <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+        <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
       ) : isSearchMode && searchResults.length === 0 ? (
-        <EmptyState icon="sad-outline" title="Ничего не найдено" body="Попробуйте другое название канала." />
+        <EmptyState icon="sad-outline" title={t('common.notFound')} body={t('channels.noResultsBody')} palette={c} />
       ) : !isSearchMode && items.length === 0 ? (
-        <EmptyState icon="megaphone-outline" title="Пока нет каналов" body="Создайте канал или найдите его через поиск." />
+        <EmptyState icon="megaphone-outline" title={t('channels.emptyTitle')} body={t('channels.emptyBody')} palette={c} />
       ) : (
         <FlatList
           data={displayData}
@@ -266,6 +278,7 @@ export default function ChannelsScreen() {
               <EntityRow
                 entity={item}
                 kind="channel"
+                palette={c}
                 selectionMode={sel.active}
                 selected={sel.isSelected(id)}
                 draft={isSearchMode ? undefined : drafts.get(String(id))}
@@ -285,7 +298,7 @@ export default function ChannelsScreen() {
           keyboardShouldPersistTaps="handled"
           refreshControl={
             !isSearchMode
-              ? <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accent} />
+              ? <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={c.accent} />
               : undefined
           }
         />
@@ -294,7 +307,7 @@ export default function ChannelsScreen() {
       {!showSearch && !sel.active && (
         <Pressable style={[styles.fab, { bottom: insets.bottom + 92 }]} onPress={() => router.push('/(app)/create/channel')}>
           <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.fabInner, shadow.glow]}>
-            <Ionicons name="add" size={30} color={colors.ink} />
+            <Ionicons name="add" size={30} color={c.ink} />
           </LinearGradient>
         </Pressable>
       )}
@@ -302,16 +315,16 @@ export default function ChannelsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.stroke, marginLeft: 16 + 54 + 14 },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: c.stroke, marginLeft: 16 + 54 + 14 },
   fab: { position: 'absolute', right: 22 },
   fabInner: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     marginHorizontal: 16, marginBottom: 10,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.stroke,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.stroke,
     borderRadius: radius.md, paddingHorizontal: 14, height: 46,
   },
-  searchInput: { flex: 1, color: colors.text, fontFamily: font.body, fontSize: 15 },
+  searchInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 15 },
 });

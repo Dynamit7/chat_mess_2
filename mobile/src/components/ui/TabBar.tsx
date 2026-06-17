@@ -3,14 +3,16 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, font, shadow } from '@/theme/theme';
+import { font, shadow } from '@/theme/theme';
+import { useT, TKey } from '@/i18n';
+import { useTheme } from '@/theme/ThemeContext';
 
-const ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap; label: string }> = {
-  index: { on: 'chatbubble', off: 'chatbubble-outline', label: 'Чаты' },
-  groups: { on: 'people', off: 'people-outline', label: 'Группы' },
-  channels: { on: 'megaphone', off: 'megaphone-outline', label: 'Каналы' },
-  reels: { on: 'newspaper', off: 'newspaper-outline', label: 'Лента' },
-  profile: { on: 'person', off: 'person-outline', label: 'Профиль' },
+const ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap; label: TKey }> = {
+  index: { on: 'chatbubble', off: 'chatbubble-outline', label: 'tabs.chats' },
+  groups: { on: 'people', off: 'people-outline', label: 'tabs.groups' },
+  channels: { on: 'megaphone', off: 'megaphone-outline', label: 'tabs.channels' },
+  reels: { on: 'newspaper', off: 'newspaper-outline', label: 'tabs.feed' },
+  profile: { on: 'person', off: 'person-outline', label: 'tabs.profile' },
 };
 
 /**
@@ -20,22 +22,36 @@ const ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typ
  */
 export function TabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
+  const { c, scheme } = useTheme();
+  const isLight = scheme === 'light';
 
   return (
     <View style={[styles.host, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
-      <View style={[styles.bar, shadow.card]}>
+      <View style={[
+        styles.bar,
+        shadow.card,
+        {
+          borderColor: c.stroke2,
+          backgroundColor: Platform.OS === 'ios'
+            ? (isLight ? 'rgba(255,255,255,0.65)' : 'rgba(20,20,22,0.55)')
+            : (isLight ? 'rgba(255,255,255,0.97)' : 'rgba(23,18,46,0.97)'),
+        },
+      ]}>
         {/* Real blur only on iOS (it clips to the rounded corners there). On Android/web
             BlurView renders on a square surface that ignores the rounded clip, so we use
             a solid rounded fill instead — no square artifact. */}
         {Platform.OS === 'ios' && (
           <View style={styles.clip}>
-            <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+            <BlurView intensity={80} tint={isLight ? 'light' : 'dark'} style={StyleSheet.absoluteFill} />
           </View>
         )}
         <View style={styles.barInner}>
           {state.routes.map((route: any, index: number) => {
             const focused = state.index === index;
-            const meta = ICONS[route.name] ?? { on: 'ellipse', off: 'ellipse-outline', label: route.name };
+            const meta = ICONS[route.name];
+            const icon = { on: meta?.on ?? 'ellipse', off: meta?.off ?? 'ellipse-outline' };
+            const label = meta ? t(meta.label) : route.name;
 
             const onPress = () => {
               Haptics.selectionAsync().catch(() => {});
@@ -51,17 +67,17 @@ export function TabBar({ state, navigation }: any) {
                 hitSlop={6}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: focused }}
-                accessibilityLabel={meta.label}
+                accessibilityLabel={label}
               >
                 <View style={styles.iconWrap}>
                   <Ionicons
-                    name={focused ? meta.on : meta.off}
+                    name={focused ? icon.on : icon.off}
                     size={23}
-                    color={focused ? colors.accent : colors.textFaint}
+                    color={focused ? c.accent : c.textFaint}
                   />
                 </View>
-                <Text style={[styles.label, focused && styles.labelActive]} numberOfLines={1}>
-                  {meta.label}
+                <Text style={[styles.label, { color: focused ? c.accent : c.textFaint }, focused && styles.labelActive]} numberOfLines={1}>
+                  {label}
                 </Text>
               </Pressable>
             );
@@ -79,9 +95,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 14,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.stroke2,
-    // iOS: translucent so the blur shows through. Android/web: solid graphite (no blur).
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(20,20,22,0.55)' : 'rgba(23,18,46,0.97)',
+    // borderColor + backgroundColor are applied inline from the active palette.
   },
   // Clip the blur in its own layer. Keeping overflow:hidden OFF the bar lets the bar
   // cast a *rounded* shadow — overflow:hidden + shadow on one view = a square shadow.
@@ -97,8 +111,7 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: font.bodyMed,
     fontSize: 10.5,
-    color: colors.textFaint,
     letterSpacing: -0.1,
   },
-  labelActive: { color: colors.accent, fontFamily: font.bodySemi },
+  labelActive: { fontFamily: font.bodySemi },
 });

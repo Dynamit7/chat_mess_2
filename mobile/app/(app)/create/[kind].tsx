@@ -2,20 +2,25 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Platform, Switch, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useMemo } from 'react';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { groupsApi, channelsApi, UploadAsset } from '@/lib/api';
 import { useAuth } from '@/state/auth';
-import { colors, font } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, Palette } from '@/theme/theme';
 
 export default function CreateEntity() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const me = Number(user?.userId);
   const { kind } = useLocalSearchParams<{ kind: string }>();
   const isGroup = kind !== 'channel';
@@ -61,42 +66,43 @@ export default function CreateEntity() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.title}>New {noun}</Text>
-        <Pressable hitSlop={10} onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.text} /></Pressable>
+        <Pressable hitSlop={10} onPress={() => router.back()}><Ionicons name="close" size={26} color={c.text} /></Pressable>
       </View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: insets.bottom + 30, gap: 18 }} keyboardShouldPersistTaps="handled">
           <Pressable onPress={pickAvatar} style={styles.avatarPick}>
-            <Avatar name={name || noun} src={avatarUri} size={92} ring />
-            <View style={styles.avatarEdit}><Ionicons name="camera" size={15} color={colors.ink} /></View>
+            <Avatar name={name || noun} src={avatarUri} size={92} ring palette={c} />
+            <View style={styles.avatarEdit}><Ionicons name="camera" size={15} color={c.ink} /></View>
           </Pressable>
 
-          <TextField label="Name" icon={isGroup ? 'people-outline' : 'megaphone-outline'} placeholder={`${isGroup ? 'Group' : 'Channel'} name`} value={name} onChangeText={setName} />
-          <TextField label="Description (optional)" icon="text-outline" placeholder="What's it about?" value={description} onChangeText={setDescription} />
+          <TextField label="Name" icon={isGroup ? 'people-outline' : 'megaphone-outline'} placeholder={`${isGroup ? 'Group' : 'Channel'} name`} value={name} onChangeText={setName} palette={c} />
+          <TextField label="Description (optional)" icon="text-outline" placeholder="What's it about?" value={description} onChangeText={setDescription} palette={c} />
 
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleLabel}>Public</Text>
               <Text style={styles.toggleSub}>{isPublic ? `Anyone can find and join this ${noun}` : `Invite-only ${noun}`}</Text>
             </View>
-            <Switch value={isPublic} onValueChange={setIsPublic} trackColor={{ true: colors.accent, false: colors.stroke2 }} thumbColor={colors.white} />
+            <Switch value={isPublic} onValueChange={setIsPublic} trackColor={{ true: c.accent, false: c.stroke2 }} thumbColor={c.white} />
           </View>
 
-          <Button label={`Create ${noun}`} onPress={submit} loading={loading} disabled={!name.trim()} style={{ marginTop: 8 }} />
+          <Button label={`Create ${noun}`} onPress={submit} loading={loading} disabled={!name.trim()} style={{ marginTop: 8 }} palette={c} />
         </ScrollView>
       </KeyboardAvoidingView>
     </AuroraBackground>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingBottom: 16 },
-  title: { color: colors.text, fontFamily: font.display, fontSize: 24 },
+  title: { color: c.text, fontFamily: font.display, fontSize: 24 },
   avatarPick: { alignSelf: 'center', marginTop: 6 },
-  avatarEdit: { position: 'absolute', right: -2, bottom: -2, width: 32, height: 32, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: colors.bg },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.stroke, borderRadius: 14, padding: 16 },
-  toggleLabel: { color: colors.text, fontFamily: font.bodySemi, fontSize: 15 },
-  toggleSub: { color: colors.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 2 },
+  avatarEdit: { position: 'absolute', right: -2, bottom: -2, width: 32, height: 32, borderRadius: 16, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: c.bg },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: 14, padding: 16 },
+  toggleLabel: { color: c.text, fontFamily: font.bodySemi, fontSize: 15 },
+  toggleSub: { color: c.textFaint, fontFamily: font.body, fontSize: 12.5, marginTop: 2 },
 });

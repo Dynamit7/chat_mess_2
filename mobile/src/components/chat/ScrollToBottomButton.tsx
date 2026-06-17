@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, shadow } from '@/theme/theme';
+import { font, shadow, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 /** Floating "jump to latest" button with an unread-since-scroll badge. */
 export function ScrollToBottomButton({
@@ -14,10 +16,12 @@ export function ScrollToBottomButton({
   onPress: () => void;
   bottom: number;
 }) {
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   if (!visible) return null;
   return (
     <Pressable onPress={onPress} style={[styles.btn, { bottom }, shadow.soft]} hitSlop={6}>
-      <Ionicons name="chevron-down" size={24} color={colors.text} />
+      <Ionicons name="chevron-down" size={24} color={c.text} />
       {count > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
@@ -27,17 +31,17 @@ export function ScrollToBottomButton({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   btn: {
     position: 'absolute', right: 14,
     width: 46, height: 46, borderRadius: 23,
-    backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.stroke,
+    backgroundColor: c.surface2, borderWidth: 1, borderColor: c.stroke,
     alignItems: 'center', justifyContent: 'center',
   },
   badge: {
     position: 'absolute', top: -6, alignSelf: 'center',
     minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center',
   },
-  badgeText: { color: colors.ink, fontFamily: font.bodyBold, fontSize: 11 },
+  badgeText: { color: c.ink, fontFamily: font.bodyBold, fontSize: 11 },
 });

@@ -10,12 +10,14 @@ import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { authApi } from '@/lib/api';
 import { useAuth } from '@/state/auth';
+import { useT } from '@/i18n';
 import { colors, font, gradients, shadow } from '@/theme/theme';
 
 export default function TwoFactor() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
+  const { t } = useT();
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const [pwd, setPwd] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,7 +47,7 @@ export default function TwoFactor() {
         <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 }]}>
           <Pressable hitSlop={10} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/login'))} style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={colors.textDim} />
-            <Text style={styles.backText}>Назад</Text>
+            <Text style={styles.backText}>{t('common.back')}</Text>
           </Pressable>
 
           <View style={styles.center}>
@@ -57,11 +59,11 @@ export default function TwoFactor() {
                 </LinearGradient>
               </View>
             </Reveal>
-            <Reveal delay={150}><Text style={styles.title}>Двухфакторная защита</Text></Reveal>
-            <Reveal delay={220}><Text style={styles.subtitle}>Аккаунт защищён. Введите двухфакторный пароль, чтобы продолжить.</Text></Reveal>
+            <Reveal delay={150}><Text style={styles.title}>{t('auth.twoFactorTitle')}</Text></Reveal>
+            <Reveal delay={220}><Text style={styles.subtitle}>{t('auth.twoFactorSubtitle')}</Text></Reveal>
 
             <Reveal delay={300} style={{ marginTop: 28, width: '100%' }}>
-              <TextField icon="key-outline" placeholder="Двухфакторный пароль" secure value={pwd} onChangeText={setPwd} onSubmitEditing={submit} />
+              <TextField icon="key-outline" placeholder={t('auth.twoFactorPassword')} secure value={pwd} onChangeText={setPwd} onSubmitEditing={submit} />
             </Reveal>
             {error ? (
               <View style={styles.errorRow}>
@@ -70,7 +72,7 @@ export default function TwoFactor() {
               </View>
             ) : null}
             <Reveal delay={370} style={{ width: '100%', marginTop: 22 }}>
-              <Button label="Продолжить" onPress={submit} loading={loading} />
+              <Button label={t('auth.continue')} onPress={submit} loading={loading} />
             </Reveal>
           </View>
         </View>

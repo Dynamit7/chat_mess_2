@@ -199,7 +199,7 @@ router.get('/feed', async (req, res) => {
  */
 router.get('/discover', async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, userId } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Get trending reels (high engagement in last 24 hours)
@@ -222,7 +222,19 @@ router.get('/discover', async (req, res) => {
       offset,
     });
 
-    res.json(reels);
+    // Attach per-user liked status so the heart renders correctly in the feed.
+    const reelsWithUserData = await Promise.all(reels.map(async (reel) => {
+      const reelData = reel.toJSON();
+      if (userId) {
+        const liked = await ReelLike.findOne({
+          where: { reelId: reel.id, userId: parseInt(userId) },
+        });
+        reelData.isLiked = !!liked;
+      }
+      return reelData;
+    }));
+
+    res.json(reelsWithUserData);
   } catch (error) {
     console.error('Error fetching discover:', error);
     res.status(500).json({ error: 'Failed to fetch discover' });
@@ -512,7 +524,11 @@ router.delete('/comment/:commentId', async (req, res) => {
       return res.status(404).json({ error: 'Comment not found' });
     }
 
-    if (comment.userId !== parseInt(userId)) {
+    // Allow either the comment author or the owner of the post (reel) to delete.
+    const reel = await Reel.findByPk(comment.reelId);
+    const isAuthor = comment.userId === parseInt(userId);
+    const isReelOwner = reel && reel.userId === parseInt(userId);
+    if (!isAuthor && !isReelOwner) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 

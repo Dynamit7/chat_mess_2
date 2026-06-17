@@ -5,20 +5,25 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useMemo } from 'react';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { usersApi, UploadAsset } from '@/lib/api';
 import { useAuth } from '@/state/auth';
-import { colors, font, radius } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { font, radius, Palette } from '@/theme/theme';
 
 export default function EditProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, updateProfile } = useAuth();
+  const { c, scheme } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const me = Number(user?.userId);
 
   const [username, setUsername] = useState(user?.username || '');
@@ -85,17 +90,18 @@ export default function EditProfile() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.title}>Изменить профиль</Text>
         <Pressable hitSlop={12} onPress={() => router.back()}>
-          <Ionicons name="close" size={26} color={colors.text} />
+          <Ionicons name="close" size={26} color={c.text} />
         </Pressable>
       </View>
 
       {fetching ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.accent} size="large" />
+          <ActivityIndicator color={c.accent} size="large" />
         </View>
       ) : (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -105,9 +111,9 @@ export default function EditProfile() {
             showsVerticalScrollIndicator={false}
           >
             <Pressable onPress={pickAvatar} style={styles.avatarPick}>
-              <Avatar name={username} src={pickedUri || existingAvatar} size={96} ring />
+              <Avatar name={username} src={pickedUri || existingAvatar} size={96} ring palette={c} />
               <View style={styles.avatarEdit}>
-                <Ionicons name="camera" size={15} color={colors.ink} />
+                <Ionicons name="camera" size={15} color={c.ink} />
               </View>
             </Pressable>
             <Text style={styles.avatarHint}>Нажмите, чтобы изменить фото</Text>
@@ -119,6 +125,7 @@ export default function EditProfile() {
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
+              palette={c}
             />
 
             <TextField
@@ -128,6 +135,7 @@ export default function EditProfile() {
               value={nickname}
               onChangeText={setNickname}
               autoCapitalize="none"
+              palette={c}
             />
 
             <View style={styles.bioWrap}>
@@ -136,7 +144,7 @@ export default function EditProfile() {
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Расскажите о себе"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={c.textFaint}
                 multiline
                 maxLength={200}
                 style={styles.bioInput}
@@ -150,6 +158,7 @@ export default function EditProfile() {
               loading={saving}
               disabled={!username.trim()}
               style={{ marginTop: 8 }}
+              palette={c}
             />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -158,29 +167,29 @@ export default function EditProfile() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 22, paddingBottom: 16,
   },
-  title: { color: colors.text, fontFamily: font.display, fontSize: 24 },
+  title: { color: c.text, fontFamily: font.display, fontSize: 24 },
   avatarPick: { alignSelf: 'center', marginTop: 6 },
   avatarEdit: {
     position: 'absolute', right: -2, bottom: -2,
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: colors.bg,
+    borderWidth: 3, borderColor: c.bg,
   },
-  avatarHint: { color: colors.textFaint, fontFamily: font.body, fontSize: 13, textAlign: 'center', marginTop: -6 },
+  avatarHint: { color: c.textFaint, fontFamily: font.body, fontSize: 13, textAlign: 'center', marginTop: -6 },
   bioWrap: { width: '100%', gap: 8 },
-  bioLabel: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 13, marginLeft: 4, letterSpacing: 0.2 },
+  bioLabel: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 13, marginLeft: 4, letterSpacing: 0.2 },
   bioInput: {
-    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.stroke,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: c.stroke,
     borderRadius: radius.md, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14,
-    minHeight: 96, color: colors.text, fontFamily: font.body, fontSize: 16,
+    minHeight: 96, color: c.text, fontFamily: font.body, fontSize: 16,
     textAlignVertical: 'top',
   },
-  bioCount: { color: colors.textFaint, fontFamily: font.body, fontSize: 12, alignSelf: 'flex-end', marginRight: 4 },
+  bioCount: { color: c.textFaint, fontFamily: font.body, fontSize: 12, alignSelf: 'flex-end', marginRight: 4 },
 });

@@ -1,7 +1,7 @@
 import { Pressable, Text, StyleSheet, ActivityIndicator, ViewStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { colors, font, radius, shadow, gradients } from '@/theme/theme';
+import { colors, font, radius, shadow, gradients, Palette } from '@/theme/theme';
 
 type Props = {
   label: string;
@@ -11,13 +11,14 @@ type Props = {
   variant?: 'primary' | 'ghost' | 'glass';
   style?: ViewStyle;
   icon?: React.ReactNode;
+  palette?: Palette;
 };
 
 /**
  * Primary CTA = violet→indigo gradient with white label and a soft glow.
  * Press feedback is a quiet opacity dip.
  */
-export function Button({ label, onPress, loading, disabled, variant = 'primary', style, icon }: Props) {
+export function Button({ label, onPress, loading, disabled, variant = 'primary', style, icon, palette = colors }: Props) {
   const handle = () => {
     if (disabled || loading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -25,7 +26,7 @@ export function Button({ label, onPress, loading, disabled, variant = 'primary',
   };
 
   const isPrimary = variant === 'primary';
-  const labelColor = isPrimary ? colors.ink : colors.text;
+  const labelColor = isPrimary ? palette.ink : palette.text;
 
   return (
     <Pressable
