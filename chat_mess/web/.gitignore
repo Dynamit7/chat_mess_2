@@ -3,3 +3,7 @@ dist
 .DS_Store
 *.local
 .vite
+
+# Mobile APK — большой бинарник, не коммитим. Скачивается в public/ при деплое
+# (см. scripts/deploy.sh, шаг "Скачиваю APK мобильного приложения").
+public/*.apk

@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { AddMembersSheet, PickUser } from '@/components/social/AddMembersSheet';
 import { channelsApi } from '@/lib/api';
 import { useAuth } from '@/state/auth';
 import { useTheme } from '@/theme/ThemeContext';
@@ -31,6 +32,7 @@ export default function ChannelInfoScreen() {
   const [leaving, setLeaving] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ id: number; name: string } | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const goBack = () => {
     if (router.canGoBack()) {
@@ -92,6 +94,16 @@ export default function ChannelInfoScreen() {
     }
   };
 
+  // Owner adds a subscriber: join with addedBy=ownerId (works for private & public).
+  const addMember = async (u: PickUser) => {
+    await channelsApi.join(channelId, u.id, myId);
+    setMembers((prev) =>
+      prev.some((m) => Number(m.userId ?? m.id) === u.id)
+        ? prev
+        : [...prev, { id: u.id, userId: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar }]
+    );
+  };
+
   const removeMember = async () => {
     if (!confirmTarget) return;
     const { id: memberId } = confirmTarget;
@@ -146,6 +158,9 @@ export default function ChannelInfoScreen() {
           {/* Quick actions */}
           <View style={styles.actions}>
             <ActionChip icon="megaphone" label="Открыть" onPress={openChannel} styles={styles} c={c} />
+            {isOwner && (
+              <ActionChip icon="person-add" label="Добавить" onPress={() => setAdding(true)} styles={styles} c={c} />
+            )}
             {isMember ? (
               <ActionChip icon="exit-outline" label="Отписаться" onPress={leave} danger loading={leaving} styles={styles} c={c} />
             ) : (
@@ -219,6 +234,15 @@ export default function ChannelInfoScreen() {
           )}
         </ScrollView>
       )}
+
+      <AddMembersSheet
+        visible={adding}
+        myId={myId}
+        title="Добавить в канал"
+        excludeIds={members.map((m: any) => Number(m.userId ?? m.id))}
+        onClose={() => setAdding(false)}
+        onPick={addMember}
+      />
 
       {/* Confirm remove modal */}
       <Modal

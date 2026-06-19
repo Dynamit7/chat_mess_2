@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Nexus",
+    "name": "Talkify",
     "slug": "nexus-messenger",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -39,23 +39,23 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Nexus needs access to your photos so you can share images in chats.",
-          "cameraPermission": "Nexus needs access to your camera so you can capture and share moments."
+          "photosPermission": "Talkify needs access to your photos so you can share images in chats.",
+          "cameraPermission": "Talkify needs access to your camera so you can capture and share moments."
         }
       ],
       "expo-splash-screen",
       [
         "expo-audio",
         {
-          "microphonePermission": "Nexus needs access to your microphone so you can record voice messages."
+          "microphonePermission": "Talkify needs access to your microphone so you can record voice messages."
         }
       ],
       "expo-sqlite",
       [
         "@config-plugins/react-native-webrtc",
         {
-          "cameraPermission": "Nexus needs access to your camera for video calls.",
-          "microphonePermission": "Nexus needs access to your microphone for calls."
+          "cameraPermission": "Talkify needs access to your camera for video calls.",
+          "microphonePermission": "Talkify needs access to your microphone for calls."
         }
       ]
     ],

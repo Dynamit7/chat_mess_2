@@ -9,10 +9,21 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://polat.digital",
+        "EXPO_PUBLIC_MINIO_URL": "https://polat.digital"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://polat.digital",
+        "EXPO_PUBLIC_MINIO_URL": "https://polat.digital"
+      }
     }
   },
   "submit": {

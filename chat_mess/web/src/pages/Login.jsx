@@ -67,7 +67,7 @@ export default function Login() {
         </button>
       </form>
       <div className="auth-foot">
-        New to DeFensy? <Link to="/register">Create an account</Link>
+        New to Talkify? <Link to="/register">Create an account</Link>
       </div>
     </AuthLayout>
   );

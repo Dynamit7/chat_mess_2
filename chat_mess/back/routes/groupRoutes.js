@@ -234,15 +234,30 @@ router.get("/members/:groupId", async (req, res) => {
         {
           model: User,
           as: "user",
-          attributes: ["id", "username"],
+          attributes: ["id", "username", "nickname", "avatar"],
         },
       ],
     });
-    const members = groupUsers.map((item) => item.user);
-    
+    let members = groupUsers.map((item) => item.user).filter(Boolean);
+
+    // Убеждаемся, что владелец есть в списке (на случай старых групп, где
+    // создатель не был записан в group_users) — как в каналах.
+    const group = await Group.findByPk(groupId);
+    if (group) {
+      const ownerInList = members.some(
+        (m) => String(m.id) === String(group.ownerId)
+      );
+      if (!ownerInList) {
+        const owner = await User.findByPk(group.ownerId, {
+          attributes: ["id", "username", "nickname", "avatar"],
+        });
+        if (owner) members = [owner, ...members];
+      }
+    }
+
     // Кэшируем результат
     await cacheGroupMembers(groupId, members);
-    
+
     return res.json(members);
   } catch (err) {
     console.error("Ошибка при получении участников группы:", err);

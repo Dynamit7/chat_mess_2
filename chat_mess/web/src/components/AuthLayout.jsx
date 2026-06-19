@@ -10,7 +10,7 @@ export default function AuthLayout({ children }) {
           <span className="mark">
             <IShield size={22} />
           </span>
-          DeFensy
+          Talkify
         </div>
 
         <motion.div
@@ -33,10 +33,18 @@ export default function AuthLayout({ children }) {
             <span className="hero-badge"><span className="hero-dot" /> Real-time</span>
             <span className="hero-badge"><span className="hero-dot" /> Two-factor secure</span>
           </div>
+
+          <a className="apk-download" href="/talkify.apk" download="Talkify.apk">
+            <span className="apk-download-icon" aria-hidden="true">▼</span>
+            <span className="apk-download-text">
+              <strong>Download for Android</strong>
+              <small>Talkify APK · v1.0.0</small>
+            </span>
+          </a>
         </motion.div>
 
         <div style={{ color: "var(--text-faint)", fontSize: 13 }}>
-          © {new Date().getFullYear()} DeFensy. All rights reserved.
+          © {new Date().getFullYear()} Talkify. All rights reserved.
         </div>
       </div>
 

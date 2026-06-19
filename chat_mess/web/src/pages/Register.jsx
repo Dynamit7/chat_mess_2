@@ -37,7 +37,7 @@ export default function Register() {
   return (
     <AuthLayout>
       <h2>Create your account</h2>
-      <p className="sub">Join DeFensy in under a minute.</p>
+      <p className="sub">Join Talkify in under a minute.</p>
       <form className="auth-form" onSubmit={submit}>
         <div className="field">
           <label>Username</label>

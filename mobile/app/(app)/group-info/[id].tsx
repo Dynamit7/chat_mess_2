@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { AddMembersSheet, PickUser } from '@/components/social/AddMembersSheet';
 import { groupsApi } from '@/lib/api';
 import { useAuth } from '@/state/auth';
 import { useTheme } from '@/theme/ThemeContext';
@@ -29,6 +30,7 @@ export default function GroupInfoScreen() {
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -64,6 +66,16 @@ export default function GroupInfoScreen() {
     } catch {
       setLeaving(false);
     }
+  };
+
+  // Owner adds a member: join with addedBy=ownerId (works for private & public).
+  const addMember = async (u: PickUser) => {
+    await groupsApi.join(groupId, u.id, myId);
+    setMembers((prev) =>
+      prev.some((m) => Number(m.userId ?? m.id) === u.id)
+        ? prev
+        : [...prev, { id: u.id, userId: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar }]
+    );
   };
 
   return (
@@ -105,6 +117,9 @@ export default function GroupInfoScreen() {
           {/* Quick actions */}
           <View style={styles.actions}>
             <ActionChip icon="chatbubbles" label="Открыть" onPress={openChat} styles={styles} c={c} />
+            {isOwner && (
+              <ActionChip icon="person-add" label="Добавить" onPress={() => setAdding(true)} styles={styles} c={c} />
+            )}
             {isMember && (
               <ActionChip icon="exit-outline" label="Покинуть" onPress={leave} danger loading={leaving} styles={styles} c={c} />
             )}
@@ -165,6 +180,15 @@ export default function GroupInfoScreen() {
           )}
         </ScrollView>
       )}
+
+      <AddMembersSheet
+        visible={adding}
+        myId={myId}
+        title="Добавить в группу"
+        excludeIds={members.map((m: any) => Number(m.userId ?? m.id))}
+        onClose={() => setAdding(false)}
+        onPick={addMember}
+      />
     </AuroraBackground>
   );
 }

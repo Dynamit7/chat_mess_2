@@ -10,13 +10,45 @@ function generateVerificationCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+// Отправитель по умолчанию (можно переопределить через .env).
+const EMAIL_FROM = process.env.EMAIL_FROM || 'My App <WelcomeDefensy@gmail.com>';
+
+// SMTP-транспорт как запасной вариант (Gmail или релей через EMAIL_HOST).
+// На облачных хостингах SMTP-порты часто заблокированы, поэтому основной путь —
+// Resend HTTP API (см. sendEmail ниже).
+const transporter = process.env.EMAIL_HOST
+  ? nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 2525,
+      secure: false,
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    })
+  : nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+
+// Универсальная отправка письма.
+// Если задан RESEND_API_KEY — шлём через Resend HTTP API (порт 443, не блокируется
+// хостингом). Иначе — через SMTP-транспорт выше.
+async function sendEmail({ to, subject, text }) {
+  if (process.env.RESEND_API_KEY) {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, text }),
+    });
+    if (!resp.ok) {
+      const detail = await resp.text();
+      throw new Error(`Resend API error ${resp.status}: ${detail}`);
+    }
+    return;
   }
-});
+  await transporter.sendMail({ from: EMAIL_FROM, to, subject, text });
+}
 
 const register = async (req, res) => {
   try {
@@ -63,13 +95,11 @@ const login = async (req, res) => {
     user.verificationCodeExpires = expires;
     await user.save();
 
-    const mailOptions = {
-      from: 'My App <WelcomeDefensy@gmail.com>',
+    await sendEmail({
       to: user.email,
       subject: 'Ваш код подтверждения',
       text: `Ваш код подтверждения: ${code}\nОн действителен 10 минут.`,
-    };
-    await transporter.sendMail(mailOptions);
+    });
 
     return res.json({
       message: 'Verification code sent to email. Please verify.',

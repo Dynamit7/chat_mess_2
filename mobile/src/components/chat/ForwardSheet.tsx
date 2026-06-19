@@ -43,21 +43,29 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
   const [selected, setSelected] = useState<Dest[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [sending, setSending] = useState(false);
-  const prevVisible = useRef(false);
+  const loadedRef = useRef(false);
 
-  // Reload every time sheet opens
+  // Load the destination lists when the sheet opens. We key the effect on both
+  // `visible` and `userId` so that if the sheet is opened before the session is
+  // ready (userId still 0/NaN — e.g. forwarding straight from the feed), it
+  // retries automatically once a valid id arrives, instead of staying empty.
   useEffect(() => {
-    if (!visible || prevVisible.current || !userId) return;
-    prevVisible.current = true;
+    if (!visible) { loadedRef.current = false; return; }
+    const uid = Number(userId);
+    if (loadedRef.current || !Number.isFinite(uid) || uid <= 0) return;
+    loadedRef.current = true;
     setLoadingData(true);
+    // Tolerate either a bare array or a wrapped { chats|groups|channels|users } shape.
+    const asArr = (d: any): any[] =>
+      Array.isArray(d) ? d : d?.chats || d?.groups || d?.channels || d?.users || [];
     Promise.all([
-      messagesApi.getChats(userId).catch(() => []),
-      groupsApi.list(userId).catch(() => []),
-      channelsApi.list(userId).catch(() => []),
+      messagesApi.getChats(uid).catch(() => []),
+      groupsApi.list(uid).catch(() => []),
+      channelsApi.list(uid).catch(() => []),
     ]).then(([c, g, ch]) => {
       // ChatSummary: { partnerId, username, picture }
       setAllChats(
-        (Array.isArray(c) ? c : [])
+        asArr(c)
           .filter((x: any) => x.partnerId)
           .map((x: any) => ({
             type: 'direct' as const,
@@ -68,7 +76,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
       );
       // Group: { id, name, avatar }
       setAllGroups(
-        (Array.isArray(g) ? g : [])
+        asArr(g)
           .filter((x: any) => x.id)
           .map((x: any) => ({
             type: 'group' as const,
@@ -79,7 +87,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
       );
       // Channel: { id, name, avatar }
       setAllChannels(
-        (Array.isArray(ch) ? ch : [])
+        asArr(ch)
           .filter((x: any) => x.id)
           .map((x: any) => ({
             type: 'channel' as const,
@@ -90,11 +98,6 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
       );
     }).finally(() => setLoadingData(false));
   }, [visible, userId]);
-
-  // Reset when sheet closes
-  useEffect(() => {
-    if (!visible) prevVisible.current = false;
-  }, [visible]);
 
   const close = useCallback(() => {
     setSelected([]);

@@ -1,5 +1,5 @@
 /* ============================================================
-   DeFensy Web — Premium design system
+   Talkify Web — Premium design system
    Dark, glassmorphic, aurora-lit. Space Grotesk + Inter.
    ============================================================ */
 
@@ -379,6 +379,38 @@ a {
   height: 7px;
   border-radius: 50%;
   background: var(--grad);
+}
+
+.apk-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 28px;
+  padding: 14px 22px;
+  border-radius: var(--r-full);
+  text-decoration: none;
+  color: #fff;
+  background: var(--grad, var(--accent));
+  border: 1px solid var(--stroke);
+  box-shadow: 0 10px 30px rgba(139, 92, 246, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.apk-download:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 38px rgba(139, 92, 246, 0.45);
+}
+.apk-download-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.apk-download-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.apk-download-text small {
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .auth-panel {

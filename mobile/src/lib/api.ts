@@ -1,5 +1,5 @@
 /**
- * Single axios instance against the Nexus backend. Attaches the JWT bearer token
+ * Single axios instance against the Talkify backend. Attaches the JWT bearer token
  * and performs a silent refresh on 401 (mirrors the web client's behaviour).
  */
 import { Platform } from 'react-native';

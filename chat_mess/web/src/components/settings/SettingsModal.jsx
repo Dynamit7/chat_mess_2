@@ -73,10 +73,20 @@ function ProfileTab() {
   return (
     <div className="settings-pane">
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}>
-        <button className="avatar-edit" onClick={() => fileRef.current?.click()}>
-          <Avatar src={form.avatar} name={form.username} size={96} />
-          <span className="avatar-edit-badge">{uploading ? <span className="spinner" /> : <ICamera size={16} />}</span>
-        </button>
+        <div className="avatar-edit">
+          {/* Клик по самой картинке — полноэкранный просмотр (zoomable). */}
+          <Avatar src={form.avatar} name={form.username} size={96} zoomable />
+          {/* Значок камеры — отдельная кнопка смены фото. */}
+          <button
+            type="button"
+            className="avatar-edit-badge"
+            style={{ border: "none", cursor: "pointer" }}
+            onClick={() => fileRef.current?.click()}
+            title="Сменить фото"
+          >
+            {uploading ? <span className="spinner" /> : <ICamera size={16} />}
+          </button>
+        </div>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickAvatar} />
       </div>
       <div className="field"><label>Username</label><input className="input" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} /></div>

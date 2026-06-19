@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Продакшн-инфраструктура для chat_mess (домен polat.digital):
+#   Postgres + Redis + MinIO. Сам бэкенд запускается ОТДЕЛЬНО под PM2 на хосте
+#   (см. back/ecosystem.config.js) и ходит сюда через 127.0.0.1.
+#
+# Запуск (креды берутся из back/.env — единый источник правды):
+#   docker compose -f docker-compose.prod.yml --env-file back/.env up -d
+#
+# Порты привязаны к 127.0.0.1 — снаружи сервиса не видно, только локально.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: chatmess_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatmess_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: chatmess_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # веб-консоль MinIO (доступна по SSH-туннелю)
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
