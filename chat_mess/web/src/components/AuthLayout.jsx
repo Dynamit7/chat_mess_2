@@ -57,6 +57,16 @@ export default function AuthLayout({ children }) {
         >
           {children}
         </motion.div>
+
+        {/* Shown only when the hero (and its download button) is hidden — i.e. on
+            phones/narrow screens, which is exactly where people install the APK. */}
+        <a className="apk-download apk-download--panel" href="/talkify.apk" download="Talkify.apk">
+          <span className="apk-download-icon" aria-hidden="true">▼</span>
+          <span className="apk-download-text">
+            <strong>Download for Android</strong>
+            <small>Talkify APK · v1.0.0</small>
+          </span>
+        </a>
       </div>
     </div>
   );

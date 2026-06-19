@@ -486,12 +486,22 @@ a {
   box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.16);
 }
 
+/* The download button inside the form panel — hidden on desktop (the hero one
+   is shown there), revealed when the hero is hidden on narrow screens. */
+.apk-download--panel {
+  display: none;
+  margin-top: 22px;
+}
+
 @media (max-width: 920px) {
   .auth-screen {
     grid-template-columns: 1fr;
   }
   .auth-hero {
     display: none;
+  }
+  .apk-download--panel {
+    display: inline-flex;
   }
 }
 
