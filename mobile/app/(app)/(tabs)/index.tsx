@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
   Pressable, Text, Alert, TextInput,
@@ -24,6 +24,10 @@ import { useT } from '@/i18n';
 import { useTheme } from '@/theme/ThemeContext';
 import { useSocket } from '@/state/socket';
 import { font, radius, Palette } from '@/theme/theme';
+
+// Skip the on-focus network refetch if we already have data and refreshed within
+// this window — keeps tab switches instant instead of reloading every time.
+const REFRESH_THROTTLE_MS = 30_000;
 
 export default function ChatsScreen() {
   const { user } = useAuth();
@@ -68,14 +72,35 @@ export default function ChatsScreen() {
     });
   }, []);
 
+  // Mirror current chats + last successful network refresh into refs so `load`
+  // can stay referentially stable (deps: [me]) while still reading live values.
+  const chatsRef = useRef<ChatSummary[]>([]);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
+  const lastLoadRef = useRef(0);
+
   // ── load chats (online → API + cache; offline → local SQLite) ─────────────
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     if (!Number.isFinite(me)) { setLoading(false); setRefreshing(false); return; }
     const key = cacheKeys.chats(me);
     const showCached = async () => {
       const cached = await cacheGet<ChatSummary[]>(key);
-      if (cached?.length) { setChats(cached); setOnlineIds(new Set()); }
+      if (!cached?.length) return;
+      // Never clobber data already on screen (e.g. a fresh network result that
+      // arrived before this cache read resolved).
+      setChats((prev) => (prev.length ? prev : cached));
+      setOnlineIds((prev) => (prev.size ? prev : new Set()));
     };
+    // Paint instantly from cache when the screen has nothing yet, so a cold start
+    // (or first visit to the tab) never shows a blank spinner — Telegram-style.
+    // Fire-and-forget: must NOT block the network path (SQLite is unavailable on
+    // web and would otherwise hang load() forever).
+    if (chatsRef.current.length === 0) void showCached();
+    // Already have data and refreshed recently → skip the network hit on focus.
+    // Pull-to-refresh and socket reconnect pass force=true to always refetch.
+    if (!force && chatsRef.current.length > 0 && Date.now() - lastLoadRef.current < REFRESH_THROTTLE_MS) {
+      setLoading(false); setRefreshing(false);
+      return;
+    }
     // Offline: don't touch the API, read the local DB.
     if (!(await getIsOnline())) {
       await showCached();
@@ -89,14 +114,14 @@ export default function ChatsScreen() {
       setChats(list);
       setOnlineIds(new Set(list.filter((c) => c.isOnline).map((c) => Number(c.partnerId))));
       cacheSet(key, list.slice(0, 30)); // save recent chats for offline
+      lastLoadRef.current = Date.now();
     } catch {
       await showCached();
     } finally { setLoading(false); setRefreshing(false); }
   }, [me]);
 
-  // Reload whenever the tab regains focus so the list reconciles with the
-  // server after actions taken elsewhere (e.g. forwarding a reel from the Reels
-  // tab). load() doesn't toggle the spinner, so this refresh is silent.
+  // Reconcile with the server when the tab regains focus (throttled inside load),
+  // so actions taken elsewhere (e.g. forwarding a reel) still show up.
   useEffect(() => { if (isFocused) load(); }, [load, isFocused]);
 
   // ── realtime socket listeners ────────────────────────────
@@ -164,7 +189,7 @@ export default function ChatsScreen() {
 
     // After a reconnect we may have missed lastMessageUpdated/chatUpdated events
     // while offline — pull a fresh snapshot so the list can't stay frozen.
-    const onReconnect = () => load();
+    const onReconnect = () => load(true);
 
     socket.on('chatUpdated', onChatUpdated);
     socket.on('lastMessageUpdated', onLastMessage);
@@ -346,7 +371,7 @@ export default function ChatsScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); load(); }}
+              onRefresh={() => { setRefreshing(true); load(true); }}
               tintColor={c.accent}
             />
           }

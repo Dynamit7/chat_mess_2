@@ -24,6 +24,10 @@ import { useT } from '@/i18n';
 import { useTheme } from '@/theme/ThemeContext';
 import { gradients, shadow, font, radius, Palette } from '@/theme/theme';
 
+// Skip the on-focus network refetch if we already have data and refreshed within
+// this window — keeps tab switches instant instead of reloading every time.
+const REFRESH_THROTTLE_MS = 30_000;
+
 export default function ChannelsScreen() {
   const { user } = useAuth();
   const socket = useSocket();
@@ -67,11 +71,29 @@ export default function ChannelsScreen() {
     });
   }, []);
 
+  // Mirror current items + last successful network refresh into refs so `load`
+  // can stay referentially stable (deps: [me]) while still reading live values.
+  const itemsRef = useRef<Entity[]>([]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  const lastLoadRef = useRef(0);
+
   // online → API + cache; offline → local SQLite
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     if (!Number.isFinite(me)) { setLoading(false); setRefreshing(false); return; }
     const key = cacheKeys.channels(me);
-    const showCached = async () => { const c = await cacheGet<Entity[]>(key); if (c?.length) setItems(c); };
+    // Never clobber data already on screen (e.g. a fresh network result that
+    // arrived before this cache read resolved).
+    const showCached = async () => { const c = await cacheGet<Entity[]>(key); if (c?.length) setItems((prev) => (prev.length ? prev : c)); };
+    // Paint instantly from cache when the screen has nothing yet (cold start /
+    // first visit) so switching to this tab never shows a blank spinner.
+    // Fire-and-forget: must NOT block the network path (SQLite is unavailable on
+    // web and would otherwise hang load() forever).
+    if (itemsRef.current.length === 0) void showCached();
+    // Already have data and refreshed recently → skip the network hit on focus.
+    if (!force && itemsRef.current.length > 0 && Date.now() - lastLoadRef.current < REFRESH_THROTTLE_MS) {
+      setLoading(false); setRefreshing(false);
+      return;
+    }
     if (!(await getIsOnline())) { await showCached(); setLoading(false); setRefreshing(false); return; }
     try {
       const [channels, unread] = await Promise.all([channelsApi.list(me), channelsApi.unreadCounts(me).catch(() => [])]);
@@ -80,6 +102,7 @@ export default function ChannelsScreen() {
       list.sort((a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime());
       setItems(list);
       cacheSet(key, list.slice(0, 30)); // save recent channels for offline
+      lastLoadRef.current = Date.now();
     } catch {
       await showCached();
     } finally {
@@ -88,8 +111,8 @@ export default function ChannelsScreen() {
     }
   }, [me]);
 
-  // Reload on every focus (mount + returning to the tab), so a freshly created
-  // channel always shows without relying on a socket event that may race/miss.
+  // Reconcile with the server on focus (throttled inside load), so a freshly
+  // created channel always shows up.
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   useEffect(() => {
@@ -142,7 +165,7 @@ export default function ChannelsScreen() {
         );
       }
     };
-    const reload = () => load();
+    const reload = () => load(true);
     const onRemoved = ({ channelId }: any) => setItems((prev) => prev.filter((c) => Number(c.id) !== Number(channelId)));
     const onUpdated = ({ channelId, updatedFields }: any) => merge(channelId, updatedFields || {}, false);
     socket.on('channelMessageReceived', onNew);
@@ -298,7 +321,7 @@ export default function ChannelsScreen() {
           keyboardShouldPersistTaps="handled"
           refreshControl={
             !isSearchMode
-              ? <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={c.accent} />
+              ? <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={c.accent} />
               : undefined
           }
         />
