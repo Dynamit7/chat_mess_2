@@ -120,7 +120,7 @@ export async function uploadFile(asset: UploadAsset): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  register: (p: { username: string; email: string; password: string }) =>
+  register: (p: { username: string; email: string; password: string; phoneNumber?: string }) =>
     api.post('/auth/register', p).then((r) => r.data),
   login: (p: { email: string; password: string }) => api.post('/auth/login', p).then((r) => r.data),
   verifyCode: (p: { userId: number; code: string }) =>

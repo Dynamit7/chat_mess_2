@@ -235,8 +235,9 @@ export default function GroupsScreen() {
         />
       ) : (
         <ScreenHeader
+          brand
           title={t('tabs.groups')}
-          subtitle={showSearch ? t('groups.searchSubtitle') : (items.length ? t('groups.count', { count: items.length }) : undefined)}
+          // subtitle={showSearch ? t('groups.searchSubtitle') : (items.length ? t('groups.count', { count: items.length }) : undefined)}
           palette={c}
           actions={[
             { icon: showSearch ? 'close' : 'search', onPress: showSearch ? closeSearch : () => setShowSearch(true) },
@@ -300,7 +301,6 @@ export default function GroupsScreen() {
             );
           }}
           contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -324,7 +324,6 @@ export default function GroupsScreen() {
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: c.stroke, marginLeft: 16 + 54 + 14 },
   fab: { position: 'absolute', right: 22 },
   fabInner: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   searchWrap: {

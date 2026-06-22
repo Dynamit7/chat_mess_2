@@ -6,7 +6,8 @@ import type { SharedValue } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Avatar } from '@/components/ui/Avatar';
-import { colors, font, Palette } from '@/theme/theme';
+import { useT } from '@/i18n';
+import { colors, font, radius, Palette } from '@/theme/theme';
 import { relativeShort, previewOf } from '@/lib/format';
 import type { ChatSummary } from '@/lib/api';
 
@@ -33,6 +34,7 @@ function RightActions({
   styles: ReturnType<typeof makeStyles>;
   c: Palette;
 }) {
+  const { t } = useT();
   const count = (onMute ? 1 : 0) + (onPin ? 1 : 0) + (onDelete ? 1 : 0);
   const totalW = count * BTN_W;
 
@@ -53,19 +55,19 @@ function RightActions({
       {onMute && (
         <Pressable style={[styles.action, { backgroundColor: c.mute }]} onPress={handle(onMute)}>
           <Ionicons name={muted ? 'volume-high' : 'volume-mute'} size={22} color="#fff" />
-          <Text style={styles.actionLabel}>{muted ? 'Вкл. звук' : 'Без звука'}</Text>
+          <Text style={styles.actionLabel}>{muted ? t('action.unmute') : t('action.mute')}</Text>
         </Pressable>
       )}
       {onPin && (
         <Pressable style={[styles.action, { backgroundColor: c.pin }]} onPress={handle(onPin)}>
           <Ionicons name={pinned ? 'pin-outline' : 'pin'} size={22} color="#fff" />
-          <Text style={styles.actionLabel}>{pinned ? 'Открепить' : 'Закрепить'}</Text>
+          <Text style={styles.actionLabel}>{pinned ? t('action.unpin') : t('action.pin')}</Text>
         </Pressable>
       )}
       {onDelete && (
         <Pressable style={[styles.action, { backgroundColor: c.danger }]} onPress={handle(onDelete)}>
           <Ionicons name="trash" size={22} color="#fff" />
-          <Text style={styles.actionLabel}>Удалить</Text>
+          <Text style={styles.actionLabel}>{t('common.delete')}</Text>
         </Pressable>
       )}
     </Animated.View>
@@ -104,6 +106,7 @@ export function ChatRow({
   palette?: Palette;
 }) {
   const c = palette;
+  const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const swipeRef = useRef<SwipeableMethods>(null);
   const unread = chat.unreadCount || 0;
@@ -138,7 +141,7 @@ export function ChatRow({
         )}
 
         <Pressable onPress={onAvatarPress ?? onPress} hitSlop={4}>
-          <Avatar name={chat.username} src={chat.picture} size={56} online={online} palette={c} />
+          <Avatar name={chat.username} src={chat.picture} size={54} online={online} ring={online} palette={c} />
         </Pressable>
 
         <View style={styles.body}>
@@ -157,7 +160,7 @@ export function ChatRow({
           <View style={styles.line}>
             {draft ? (
               <Text numberOfLines={1} style={styles.preview}>
-                <Text style={styles.draftLabel}>Черновик: </Text>
+                <Text style={styles.draftLabel}>{t('chat.draft')}: </Text>
                 <Text style={styles.draftText}>{draft}</Text>
               </Text>
             ) : (
@@ -166,7 +169,7 @@ export function ChatRow({
                   <Ionicons name="arrow-redo" size={13} color={c.textFaint} style={{ marginRight: 2, flexShrink: 0 }} />
                 )}
                 <Text numberOfLines={1} style={[styles.preview, unread > 0 && styles.previewBright]}>
-                  {preview || 'Нажмите, чтобы начать чат'}
+                  {preview || t('chat.tapToStart')}
                 </Text>
               </>
             )}
@@ -184,25 +187,34 @@ export function ChatRow({
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
+  // Aurora Glass: each conversation is a floating, rounded glass card with a
+  // hairline border — separation comes from depth + spacing, not list dividers.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'transparent',
-    gap: 14,
+    marginHorizontal: 12,
+    marginVertical: 3.5,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 20,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.stroke,
+    gap: 13,
+    overflow: 'hidden',
   },
-  rowPressed: { backgroundColor: c.glass },
-  rowSelected: { backgroundColor: c.glass2 },
+  rowPressed: { backgroundColor: c.surface2, borderColor: c.stroke2 },
+  rowSelected: { backgroundColor: c.accentSoft, borderColor: c.accent },
   checkbox: {
     width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.stroke2,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   checkboxOn: { backgroundColor: c.accent, borderColor: c.accent },
+  // Accent edge that the rounded card clips into a soft pill — marks unread.
   unreadBar: {
     position: 'absolute',
-    left: 0, top: 16, bottom: 16,
-    width: 3, borderRadius: 3,
+    left: 0, top: 0, bottom: 0,
+    width: 4,
     backgroundColor: c.accent,
   },
   body: { flex: 1, gap: 5 },
@@ -245,12 +257,23 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.accent,
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
+    // Soft indigo glow so the unread badge reads as the brightest point in the row.
+    shadowColor: c.accent,
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
   },
-  badgeMuted: { backgroundColor: c.surface2 },
+  badgeMuted: { backgroundColor: c.surface2, shadowOpacity: 0, elevation: 0 },
   badgeText: { color: c.ink, fontFamily: font.bodyBold, fontSize: 11 },
   badgeTextMuted: { color: c.textDim },
 
   actionsRow: { flexDirection: 'row', alignItems: 'stretch' },
-  action: { width: BTN_W, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  // Each action keeps a BTN_W-wide slot (so the swipe reveal math stays exact),
+  // but the visible pill is inset with margins + rounded to match the chat row.
+  action: {
+    width: BTN_W - 6, marginHorizontal: 3, marginVertical: 3.5,
+    borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', gap: 5,
+  },
   actionLabel: { color: '#fff', fontFamily: font.bodySemi, fontSize: 11 },
 });

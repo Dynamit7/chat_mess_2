@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
+import { BrandMark } from '@/components/ui/BrandMark';
 import { ChatRow } from '@/components/chat/ChatRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectionBar } from '@/components/ui/SelectionBar';
@@ -272,8 +273,9 @@ export default function ChatsScreen() {
 
   const renderHeader = () => (
     <View style={{ paddingTop: insets.top + 12 }}>
-      {/* Title row */}
+      {/* Brand lockup + screen title on a single row */}
       <View style={styles.titleRow}>
+        <BrandMark palette={c} />
         <Text style={styles.title}>{t('tabs.chats')}</Text>
       </View>
 
@@ -348,7 +350,6 @@ export default function ChatsScreen() {
               />
             );
           }}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={
             query.trim() ? (
               <EmptyState
@@ -397,7 +398,7 @@ const SIDE = 20;
 const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  // Title
+  // Brand lockup + title share one row.
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -408,8 +409,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   title: {
     color: c.text,
     fontFamily: font.display,
-    fontSize: 34,
-    letterSpacing: -0.6,
+    fontSize: 28,
+    letterSpacing: -0.5,
   },
   addBtn: {
     width: 44, height: 44,
@@ -421,16 +422,19 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Search
+  // Search — same glass language as the conversation cards.
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
-    marginHorizontal: SIDE,
+    marginHorizontal: 12,
+    marginBottom: 4,
     backgroundColor: c.surface,
-    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: c.stroke,
+    borderRadius: radius.xl,
     paddingHorizontal: 14,
-    height: 44,
+    height: 46,
   },
   searchInput: {
     flex: 1,
@@ -438,13 +442,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     fontFamily: font.body,
     fontSize: 16,
     paddingVertical: 0,
-  },
-
-  // List
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: c.stroke,
-    marginLeft: SIDE + 56 + 14,
   },
 
   // FAB
@@ -456,7 +453,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#7C4DFF',
+    shadowColor: c.accent,
     shadowOpacity: 0.5,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },

@@ -1,0 +1,32 @@
+{
+  "cli": {
+    "version": ">= 20.2.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://polat.digital",
+        "EXPO_PUBLIC_MINIO_URL": "https://polat.digital"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://polat.digital",
+        "EXPO_PUBLIC_MINIO_URL": "https://polat.digital"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

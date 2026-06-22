@@ -11,6 +11,7 @@ import {
 import { getDraft, writeDraft, commitDraft } from '@/lib/drafts';
 import { font, radius, gradients, shadow, Palette } from '@/theme/theme';
 import { useTheme } from '@/theme/ThemeContext';
+import { useT } from '@/i18n';
 import type { Message } from '@/lib/api';
 
 const fmtMs = (ms: number) => {
@@ -44,6 +45,7 @@ export function Composer({
   onTyping: (isTyping: boolean) => void;
 }) {
   const { c } = useTheme();
+  const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const [text, setText] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -93,7 +95,7 @@ export function Composer({
     releasedRef.current = false;
     try {
       const perm = await requestRecordingPermissionsAsync();
-      if (!perm.granted) { Alert.alert('Микрофон', 'Разрешите доступ к микрофону, чтобы записывать голосовые сообщения.'); return; }
+      if (!perm.granted) { Alert.alert(t('chat.micTitle'), t('chat.micHint')); return; }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       if (releasedRef.current) { releasedRef.current = false; return; } // released during prepare
@@ -196,7 +198,7 @@ export function Composer({
           <View style={styles.recBar}>
             <View style={styles.recDot} />
             <Text style={styles.recTime}>{fmtMs(recState.durationMillis || 0)}</Text>
-            <Text numberOfLines={1} style={styles.recHint}>Отпустите для отправки</Text>
+            <Text numberOfLines={1} style={styles.recHint}>{t('chat.releaseToSend')}</Text>
           </View>
         ) : (
           <>
@@ -211,7 +213,7 @@ export function Composer({
                 value={text}
                 onChangeText={emitTyping}
                 onFocus={() => setEmojiOpen(false)}
-                placeholder="Сообщение"
+                placeholder={t('chat.message')}
                 placeholderTextColor={c.textFaint}
                 style={styles.input}
                 multiline

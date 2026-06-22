@@ -52,11 +52,22 @@ async function sendEmail({ to, subject, text }) {
 
 const register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, phoneNumber } = req.body;
 
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Normalise to E.164-ish: keep a leading + and digits only.
+    const phone = typeof phoneNumber === 'string'
+      ? phoneNumber.trim().replace(/(?!^\+)\D/g, '')
+      : null;
+    if (phone) {
+      const existingPhone = await User.findOne({ where: { phoneNumber: phone } });
+      if (existingPhone) {
+        return res.status(400).json({ error: 'User with this phone number already exists' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -64,6 +75,7 @@ const register = async (req, res) => {
     const newUser = await User.create({
       username,
       email,
+      phoneNumber: phone || null,
       password: hashedPassword,
     });
 

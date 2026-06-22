@@ -1,16 +1,18 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { View, TextInput, Pressable, StyleSheet, Text } from 'react-native';
-import { colors, font, radius } from '@/theme/theme';
+import { colors, font, radius, Palette } from '@/theme/theme';
 
 /** 6-box one-time-code input with a hidden native field for keyboard/paste. */
-export function OtpInput({ value, onChange, length = 6, onComplete }: {
+export function OtpInput({ value, onChange, length = 6, onComplete, palette = colors }: {
   value: string;
   onChange: (v: string) => void;
   length?: number;
   onComplete?: (v: string) => void;
+  palette?: Palette;
 }) {
   const ref = useRef<TextInput>(null);
   const [focused, setFocused] = useState(false);
+  const styles = useMemo(() => makeStyles(palette), [palette]);
 
   const setVal = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, length);
@@ -48,16 +50,16 @@ export function OtpInput({ value, onChange, length = 6, onComplete }: {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: { flexDirection: 'row', gap: 9, justifyContent: 'center' },
   box: {
     width: 48, height: 62, borderRadius: radius.md,
-    borderWidth: 1.5, borderColor: colors.stroke, backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1.5, borderColor: c.stroke, backgroundColor: c.glass,
     alignItems: 'center', justifyContent: 'center',
   },
-  boxFilled: { borderColor: colors.stroke2, backgroundColor: colors.glass2 },
-  boxActive: { borderColor: colors.accent, backgroundColor: 'rgba(139,92,246,0.12)' },
-  boxText: { color: colors.text, fontFamily: font.display, fontSize: 26 },
-  caret: { position: 'absolute', width: 2, height: 26, backgroundColor: colors.accent, borderRadius: 1 },
+  boxFilled: { borderColor: c.stroke2, backgroundColor: c.glass2 },
+  boxActive: { borderColor: c.accent, backgroundColor: c.accentSoft },
+  boxText: { color: c.text, fontFamily: font.display, fontSize: 26 },
+  caret: { position: 'absolute', width: 2, height: 26, backgroundColor: c.accent, borderRadius: 1 },
   hidden: { position: 'absolute', opacity: 0, width: 1, height: 1 },
 });

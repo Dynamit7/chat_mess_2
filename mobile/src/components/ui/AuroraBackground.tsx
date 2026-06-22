@@ -6,8 +6,10 @@ import { colors, Palette } from '@/theme/theme';
 const { width: W, height: H } = Dimensions.get('window');
 
 /**
- * Rossi canvas. A midnight-purple stage lit by a single violet bloom in
- * the top-left — premium and minimal, never decorative.
+ * Talkify canvas. A near-black stage lit by two soft indigo blooms — one warm
+ * source top-left, a quieter counter-light lower-right — plus a faint top
+ * vignette for depth. Premium and atmospheric, never decorative: the blooms are
+ * the only colour in the room so the accent always reads against them.
  *
  * Pass `palette` to theme it; defaults to the dark palette so screens not yet
  * migrated to the theme hook keep their look unchanged.
@@ -15,20 +17,28 @@ const { width: W, height: H } = Dimensions.get('window');
 export function AuroraBackground({ children, style, palette = colors }: { children?: ReactNode; style?: ViewStyle; palette?: Palette }) {
   return (
     <View style={[styles.root, { backgroundColor: palette.bg }, style]}>
-      {/* Violet glow anchored top-left — the one source of colour on midnight. */}
+      {/* Primary bloom anchored top-left — the main light source (per-theme colour). */}
       <LinearGradient
-        colors={['rgba(124,77,255,0.20)', 'rgba(124,77,255,0)']}
+        colors={palette.bloom1}
         start={{ x: 0.05, y: 0 }}
-        end={{ x: 0.65, y: 0.5 }}
-        style={[styles.bloom, { width: W * 1.25, height: W * 1.25, left: -W * 0.35, top: -W * 0.5 }]}
+        end={{ x: 0.7, y: 0.55 }}
+        style={[styles.bloom, { width: W * 1.35, height: W * 1.35, left: -W * 0.4, top: -W * 0.55 }]}
         pointerEvents="none"
       />
-      {/* A whisper of deep violet counter-light, lower right, for quiet dimension. */}
+      {/* Deeper counter-light, lower-right, for quiet dimension. */}
       <LinearGradient
-        colors={['rgba(92,48,224,0.08)', 'rgba(92,48,224,0)']}
-        start={{ x: 0.9, y: 0.4 }}
-        end={{ x: 0.4, y: 1 }}
-        style={[styles.bloom, { width: W, height: W, right: -W * 0.3, top: H * 0.5 }]}
+        colors={palette.bloom2}
+        start={{ x: 0.95, y: 0.35 }}
+        end={{ x: 0.35, y: 1 }}
+        style={[styles.bloom, { width: W * 1.1, height: W * 1.1, right: -W * 0.35, top: H * 0.46 }]}
+        pointerEvents="none"
+      />
+      {/* Faint accent wash centre-right to keep the midground from going flat. */}
+      <LinearGradient
+        colors={palette.bloom3}
+        start={{ x: 1, y: 0.25 }}
+        end={{ x: 0.4, y: 0.6 }}
+        style={[styles.bloom, { width: W * 0.9, height: W * 0.9, right: -W * 0.25, top: H * 0.12 }]}
         pointerEvents="none"
       />
 

@@ -64,6 +64,11 @@ const User = sequelize.define('User', {
     allowNull: false,
     unique: true,
   },
+  phoneNumber: {
+    type: DataTypes.STRING(32),
+    allowNull: true,
+    unique: true, // E.164 format, e.g. +998901234567
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false,

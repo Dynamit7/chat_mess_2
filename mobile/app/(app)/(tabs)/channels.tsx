@@ -251,8 +251,9 @@ export default function ChannelsScreen() {
         />
       ) : (
         <ScreenHeader
+          brand
           title={t('tabs.channels')}
-          subtitle={showSearch ? t('channels.searchSubtitle') : (items.length ? t('channels.count', { count: items.length }) : undefined)}
+          // subtitle={showSearch ? t('channels.searchSubtitle') : (items.length ? t('channels.count', { count: items.length }) : undefined)}
           palette={c}
           actions={[
             { icon: showSearch ? 'close' : 'search', onPress: showSearch ? closeSearch : () => setShowSearch(true) },
@@ -316,7 +317,6 @@ export default function ChannelsScreen() {
             );
           }}
           contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -340,7 +340,6 @@ export default function ChannelsScreen() {
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: c.stroke, marginLeft: 16 + 54 + 14 },
   fab: { position: 'absolute', right: 22 },
   fabInner: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   searchWrap: {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,13 +11,16 @@ import { Reveal } from '@/components/ui/Reveal';
 import { authApi } from '@/lib/api';
 import { useAuth } from '@/state/auth';
 import { useT } from '@/i18n';
-import { colors, font, gradients, shadow } from '@/theme/theme';
+import { font, gradients, shadow, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 export default function TwoFactor() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
   const { t } = useT();
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const [pwd, setPwd] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,20 +45,20 @@ export default function TwoFactor() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 }]}>
           <Pressable hitSlop={10} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/login'))} style={styles.back}>
-            <Ionicons name="chevron-back" size={22} color={colors.textDim} />
+            <Ionicons name="chevron-back" size={22} color={c.textDim} />
             <Text style={styles.backText}>{t('common.back')}</Text>
           </Pressable>
 
           <View style={styles.center}>
             <Reveal delay={60}>
               <View style={styles.iconWrap}>
-                <LinearGradient colors={['rgba(163,0,0,0.4)', 'rgba(163,0,0,0)']} style={styles.iconHalo} />
+                <LinearGradient colors={[hexToRgba(c.brand2, 0.4), hexToRgba(c.brand2, 0)]} style={styles.iconHalo} />
                 <LinearGradient colors={gradients.brand as unknown as readonly [string, string, ...string[]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.icon, shadow.glow]}>
-                  <Ionicons name="lock-closed" size={32} color={colors.ink} />
+                  <Ionicons name="lock-closed" size={32} color={c.ink} />
                 </LinearGradient>
               </View>
             </Reveal>
@@ -63,16 +66,16 @@ export default function TwoFactor() {
             <Reveal delay={220}><Text style={styles.subtitle}>{t('auth.twoFactorSubtitle')}</Text></Reveal>
 
             <Reveal delay={300} style={{ marginTop: 28, width: '100%' }}>
-              <TextField icon="key-outline" placeholder={t('auth.twoFactorPassword')} secure value={pwd} onChangeText={setPwd} onSubmitEditing={submit} />
+              <TextField icon="key-outline" placeholder={t('auth.twoFactorPassword')} secure value={pwd} onChangeText={setPwd} onSubmitEditing={submit} palette={c} />
             </Reveal>
             {error ? (
               <View style={styles.errorRow}>
-                <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                <Ionicons name="alert-circle" size={16} color={c.danger} />
                 <Text style={styles.error}>{error}</Text>
               </View>
             ) : null}
             <Reveal delay={370} style={{ width: '100%', marginTop: 22 }}>
-              <Button label={t('auth.continue')} onPress={submit} loading={loading} />
+              <Button label={t('auth.continue')} onPress={submit} loading={loading} palette={c} />
             </Reveal>
           </View>
         </View>
@@ -81,16 +84,24 @@ export default function TwoFactor() {
   );
 }
 
-const styles = StyleSheet.create({
+/** "#RRGGBB" → "rgba(r,g,b,a)"; passes through anything that isn't a 6-digit hex. */
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 26 },
   back: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  backText: { color: colors.textDim, fontFamily: font.bodyMed, fontSize: 15 },
+  backText: { color: c.textDim, fontFamily: font.bodyMed, fontSize: 15 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 50 },
   iconWrap: { width: 78, height: 78, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
   iconHalo: { position: 'absolute', width: 120, height: 120, borderRadius: 60 },
   icon: { width: 78, height: 78, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  title: { color: colors.text, fontFamily: font.display, fontSize: 28, letterSpacing: -0.3, marginBottom: 12, textAlign: 'center' },
-  subtitle: { color: colors.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center', lineHeight: 22, paddingHorizontal: 6 },
+  title: { color: c.text, fontFamily: font.display, fontSize: 28, letterSpacing: -0.3, marginBottom: 12, textAlign: 'center' },
+  subtitle: { color: c.textDim, fontFamily: font.body, fontSize: 15, textAlign: 'center', lineHeight: 22, paddingHorizontal: 6 },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 },
-  error: { color: colors.danger, fontFamily: font.bodyMed, fontSize: 13 },
+  error: { color: c.danger, fontFamily: font.bodyMed, fontSize: 13 },
 });

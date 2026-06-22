@@ -40,13 +40,13 @@ export default function SettingsHub() {
         ))}
       </GlassCard>
 
-      <Text style={s.section}>{t('settings.about')}</Text>
+      {/* <Text style={s.section}>{t('settings.about')}</Text>
       <GlassCard palette={c}>
-        <Text style={s.aboutLine}>Rossi Messenger</Text>
+        <Text style={s.aboutLine}>Talkify</Text>
         <Text style={s.aboutSub}>{t('settings.version')}</Text>
         <Text style={[s.aboutSub, { marginTop: 10 }]}>{t('settings.connectedTo')}</Text>
         <Text style={s.aboutMono}>{BASE_URL}</Text>
-      </GlassCard>
+      </GlassCard> */}
     </SettingsScaffold>
   );
 }

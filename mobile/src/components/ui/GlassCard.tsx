@@ -23,8 +23,9 @@ export function GlassCard({
   padded?: boolean;
   palette?: Palette;
 }) {
-  // Light palette text is black — use it to pick the blur tint + fallback fill.
-  const isLight = palette.text === '#000000';
+  // Detect light vs dark from the canvas luminance (robust across all themes) —
+  // picks the right blur tint + fallback fill so light mode stays crisp.
+  const isLight = luminance(palette.bg) > 140;
   return (
     <View
       style={[
@@ -42,6 +43,16 @@ export function GlassCard({
       <View style={[styles.fill, padded && styles.padded]}>{children}</View>
     </View>
   );
+}
+
+/** Rough perceived brightness (0–255) of a #rrggbb colour. */
+function luminance(hex: string): number {
+  const h = hex.replace('#', '');
+  if (h.length < 6) return 0;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
 const styles = StyleSheet.create({

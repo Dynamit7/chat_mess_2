@@ -16,9 +16,9 @@ const ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typ
 };
 
 /**
- * Glassmorphic floating tab bar. A frosted `BlurView` (intensity 80, dark) sits
- * over the black canvas; the active tab is the only maroon thing here — icon and
- * label both adopt `accent`, with a soft maroon wash behind the icon.
+ * Glassmorphic floating tab bar. A frosted `BlurView` sits over the near-black
+ * canvas; the active tab is the only indigo thing here — icon and label adopt
+ * `accent`, and a soft indigo capsule sits behind the focused icon.
  */
 export function TabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -34,8 +34,8 @@ export function TabBar({ state, navigation }: any) {
         {
           borderColor: c.stroke2,
           backgroundColor: Platform.OS === 'ios'
-            ? (isLight ? 'rgba(255,255,255,0.65)' : 'rgba(20,20,22,0.55)')
-            : (isLight ? 'rgba(255,255,255,0.97)' : 'rgba(23,18,46,0.97)'),
+            ? (isLight ? 'rgba(255,255,255,0.62)' : 'rgba(16,18,22,0.55)')
+            : (isLight ? 'rgba(255,255,255,0.97)' : 'rgba(14,16,20,0.97)'),
         },
       ]}>
         {/* Real blur only on iOS (it clips to the rounded corners there). On Android/web
@@ -70,6 +70,12 @@ export function TabBar({ state, navigation }: any) {
                 accessibilityLabel={label}
               >
                 <View style={styles.iconWrap}>
+                  {focused && (
+                    <View
+                      style={[styles.activePill, { backgroundColor: c.accentSoft, borderColor: c.stroke2 }]}
+                      pointerEvents="none"
+                    />
+                  )}
                   <Ionicons
                     name={focused ? icon.on : icon.off}
                     size={23}
@@ -107,6 +113,11 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  activePill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   label: {
     fontFamily: font.bodyMed,

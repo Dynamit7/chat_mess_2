@@ -8,6 +8,7 @@ import { timeOf } from '@/lib/format';
 import { fixFileUrl } from '@/lib/config';
 import { SwipeToReply } from '@/components/chat/SwipeToReply';
 import { VoiceMessage } from '@/components/chat/VoiceMessage';
+import { useT } from '@/i18n';
 import type { Message } from '@/lib/api';
 
 type Props = {
@@ -59,6 +60,7 @@ function Ticks({ msg, c }: { msg: Message; c: Palette }) {
 
 export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect, palette = colors }: Props) {
   const c = palette;
+  const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const hasText = !!(msg.text && msg.text.trim());
   const isImage = msg.type === 'image' && !!msg.fileUrl;
@@ -93,7 +95,7 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
         <View style={[styles.forwardBanner, isOut && styles.forwardBannerOut]}>
           <Ionicons name="arrow-redo" size={12} color={isOut ? 'rgba(255,255,255,0.75)' : c.accent} />
           <Text style={[styles.forwardText, isOut && { color: 'rgba(255,255,255,0.75)' }]} numberOfLines={1}>
-            {isOut && myUsername && msg.forwardedFromUsername === myUsername ? 'Вы' : msg.forwardedFromUsername}
+            {isOut && myUsername && msg.forwardedFromUsername === myUsername ? t('feed.you') : msg.forwardedFromUsername}
           </Text>
         </View>
       ) : null}
@@ -198,14 +200,22 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   rowWrap: { paddingHorizontal: 14 },
-  bubble: { paddingHorizontal: 13, paddingVertical: 8, borderRadius: radius.lg },
+  bubble: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.xl },
   bubbleMedia: { padding: 4, paddingBottom: 6 },
-  // Outgoing: violet→indigo gradient (fill comes from LinearGradient), white text, sharp bottom-right tail.
-  bubbleOut: { borderBottomRightRadius: 5 },
-  // Incoming: quiet violet surface, hairline border, sharp bottom-left tail.
-  bubbleIn: { backgroundColor: c.bubbleIn, borderWidth: 1, borderColor: c.stroke, borderBottomLeftRadius: 5 },
-  groupedOut: { borderTopRightRadius: radius.lg, borderBottomRightRadius: 5 },
-  groupedIn: { borderTopLeftRadius: radius.lg, borderBottomLeftRadius: 5 },
+  // Outgoing: emerald→teal gradient (fill comes from LinearGradient), white text, sharp bottom-right tail.
+  bubbleOut: {
+    borderBottomRightRadius: 6,
+    // Soft teal glow lifts the outgoing bubble off the canvas — the Aurora Glass signature.
+    shadowColor: c.brand2,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  // Incoming: quiet glass surface, hairline border, sharp bottom-left tail.
+  bubbleIn: { backgroundColor: c.bubbleIn, borderWidth: 1, borderColor: c.stroke2, borderBottomLeftRadius: 6 },
+  groupedOut: { borderTopRightRadius: radius.xl, borderBottomRightRadius: 6 },
+  groupedIn: { borderTopLeftRadius: radius.xl, borderBottomLeftRadius: 6 },
   sender: { fontFamily: font.bodySemi, fontSize: 12.5, marginBottom: 2 },
   text: { fontFamily: font.body, fontSize: 15.5, lineHeight: 21 },
   textOut: { color: c.white },

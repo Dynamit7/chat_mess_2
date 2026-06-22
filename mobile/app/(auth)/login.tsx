@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,12 +10,15 @@ import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { authApi } from '@/lib/api';
 import { useT } from '@/i18n';
-import { colors, font } from '@/theme/theme';
+import { font, Palette } from '@/theme/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 export default function Login() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useT();
+  const { c } = useTheme();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,14 +42,14 @@ export default function Login() {
   };
 
   return (
-    <AuroraBackground>
+    <AuroraBackground palette={c}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 28 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Reveal delay={60}><Logo /></Reveal>
+          <Reveal delay={60}><Logo palette={c} /></Reveal>
 
           <View style={styles.hero}>
             <Reveal delay={140}>
@@ -74,6 +77,7 @@ export default function Login() {
                 autoComplete="email"
                 value={email}
                 onChangeText={setEmail}
+                palette={c}
               />
             </Reveal>
             <Reveal delay={450}>
@@ -85,18 +89,19 @@ export default function Login() {
                 value={password}
                 onChangeText={setPassword}
                 onSubmitEditing={onLogin}
+                palette={c}
               />
             </Reveal>
 
             {error ? (
               <View style={styles.errorRow}>
-                <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                <Ionicons name="alert-circle" size={16} color={c.danger} />
                 <Text style={styles.error}>{error}</Text>
               </View>
             ) : null}
 
             <Reveal delay={530}>
-              <Button label={t('auth.login')} onPress={onLogin} loading={loading} style={{ marginTop: 8 }} icon={<Ionicons name="arrow-forward" size={18} color={colors.ink} />} />
+              <Button label={t('auth.login')} onPress={onLogin} loading={loading} style={{ marginTop: 8 }} palette={c} icon={<Ionicons name="arrow-forward" size={18} color={c.ink} />} />
             </Reveal>
           </View>
 
@@ -112,17 +117,17 @@ export default function Login() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: { paddingHorizontal: 26, flexGrow: 1 },
   hero: { marginTop: 44 },
-  eyebrow: { color: colors.accent, fontFamily: font.bodyBold, fontSize: 12, letterSpacing: 3, marginBottom: 14 },
-  title: { color: colors.text, fontFamily: font.display, fontSize: 46, lineHeight: 48, letterSpacing: -0.5 },
-  titleAccent: { color: colors.accent },
-  subtitle: { color: colors.textDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
+  eyebrow: { color: c.accent, fontFamily: font.bodyBold, fontSize: 12, letterSpacing: 3, marginBottom: 14 },
+  title: { color: c.text, fontFamily: font.display, fontSize: 46, lineHeight: 48, letterSpacing: -0.5 },
+  titleAccent: { color: c.accent },
+  subtitle: { color: c.textDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
   form: { marginTop: 36, gap: 16 },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 2 },
-  error: { color: colors.danger, fontFamily: font.bodyMed, fontSize: 13 },
+  error: { color: c.danger, fontFamily: font.bodyMed, fontSize: 13 },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 'auto', paddingTop: 30 },
-  footerText: { color: colors.textDim, fontFamily: font.body, fontSize: 14 },
-  link: { color: colors.accent, fontFamily: font.bodySemi, fontSize: 14 },
+  footerText: { color: c.textDim, fontFamily: font.body, fontSize: 14 },
+  link: { color: c.accent, fontFamily: font.bodySemi, fontSize: 14 },
 });

@@ -7,7 +7,8 @@ import Animated, { useAnimatedStyle, interpolate, Extrapolation } from 'react-na
 import type { SharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Avatar } from '@/components/ui/Avatar';
-import { colors, font, gradients, Palette } from '@/theme/theme';
+import { useT } from '@/i18n';
+import { colors, font, gradients, radius, Palette } from '@/theme/theme';
 import { relativeShort, previewOf } from '@/lib/format';
 
 const BTN_W = 80;
@@ -49,6 +50,7 @@ function RightActions({
   styles: ReturnType<typeof makeStyles>;
   c: Palette;
 }) {
+  const { t } = useT();
   const count = (onMute ? 1 : 0) + (onPin ? 1 : 0) + (onDelete ? 1 : 0);
   const totalW = count * BTN_W;
 
@@ -69,19 +71,19 @@ function RightActions({
       {onMute && (
         <Pressable style={[styles.action, { backgroundColor: c.mute }]} onPress={handle(onMute)}>
           <Ionicons name={muted ? 'volume-high' : 'volume-mute'} size={22} color="#fff" />
-          <Text style={styles.actionLabel}>{muted ? 'Вкл. звук' : 'Без звука'}</Text>
+          <Text style={styles.actionLabel}>{muted ? t('action.unmute') : t('action.mute')}</Text>
         </Pressable>
       )}
       {onPin && (
         <Pressable style={[styles.action, { backgroundColor: c.pin }]} onPress={handle(onPin)}>
           <Ionicons name={pinned ? 'pin-outline' : 'pin'} size={22} color="#fff" />
-          <Text style={styles.actionLabel}>{pinned ? 'Открепить' : 'Закрепить'}</Text>
+          <Text style={styles.actionLabel}>{pinned ? t('action.unpin') : t('action.pin')}</Text>
         </Pressable>
       )}
       {onDelete && (
         <Pressable style={[styles.action, { backgroundColor: c.danger }]} onPress={handle(onDelete)}>
           <Ionicons name="trash" size={22} color="#fff" />
-          <Text style={styles.actionLabel}>Удалить</Text>
+          <Text style={styles.actionLabel}>{t('common.delete')}</Text>
         </Pressable>
       )}
     </Animated.View>
@@ -119,13 +121,14 @@ export function EntityRow({
   palette?: Palette;
 }) {
   const c = palette;
+  const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const swipeRef = useRef<SwipeableMethods>(null);
   const unread = entity.unreadCount || 0;
   const count = entity.membersCount ?? entity.subscribersCount;
   const preview = entity.lastMessage
     ? `${entity.lastMessageSender ? entity.lastMessageSender + ': ' : ''}${previewOf(entity.lastMessage, entity.lastMessageType)}`
-    : entity.description || (count != null ? `${count} ${kind === 'group' ? 'members' : 'subscribers'}` : 'Tap to open');
+    : entity.description || (count != null ? t(kind === 'group' ? 'info.members' : 'info.subscribers', { count }) : t('chat.tapToStart'));
   const hasActions = !!(onMute || onPin || onDelete);
 
   return (
@@ -165,7 +168,7 @@ export function EntityRow({
           <View style={styles.previewLine}>
             {draft ? (
               <Text numberOfLines={1} style={styles.preview}>
-                <Text style={styles.draftLabel}>Черновик: </Text>
+                <Text style={styles.draftLabel}>{t('chat.draft')}: </Text>
                 <Text style={styles.draftText}>{draft}</Text>
               </Text>
             ) : (
@@ -195,9 +198,17 @@ export function EntityRow({
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'transparent' },
-  rowPressed: { backgroundColor: c.glass },
-  rowSelected: { backgroundColor: c.glass2 },
+  // Aurora Glass: floating rounded glass card, matched to the chat list.
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 13,
+    marginHorizontal: 12, marginVertical: 3.5,
+    paddingHorizontal: 12, paddingVertical: 11,
+    borderRadius: 20, backgroundColor: c.surface,
+    borderWidth: 1, borderColor: c.stroke,
+    overflow: 'hidden',
+  },
+  rowPressed: { backgroundColor: c.surface2, borderColor: c.stroke2 },
+  rowSelected: { backgroundColor: c.accentSoft, borderColor: c.accent },
   checkbox: {
     width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.stroke2,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -205,7 +216,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   checkboxOn: { backgroundColor: c.accent, borderColor: c.accent },
   kindDot: {
     position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 11,
-    backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: c.bg,
+    backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: c.surface,
   },
   middle: { flex: 1, gap: 4 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -222,6 +233,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   badgeText: { color: c.ink, fontFamily: font.bodyBold, fontSize: 11 },
 
   actionsRow: { flexDirection: 'row', alignItems: 'stretch' },
-  action: { width: 80, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  // BTN_W-wide slot keeps the swipe reveal exact; the visible pill is inset + rounded.
+  action: {
+    width: BTN_W - 6, marginHorizontal: 3, marginVertical: 3.5,
+    borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', gap: 5,
+  },
   actionLabel: { color: '#fff', fontFamily: font.bodySemi, fontSize: 11 },
 });

@@ -15,6 +15,7 @@ import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { MessageActionSheet } from '@/components/chat/MessageActionSheet';
+import { AttachSheet } from '@/components/chat/AttachSheet';
 import { ReactionsViewer } from '@/components/chat/ReactionsViewer';
 import { ForwardSheet } from '@/components/chat/ForwardSheet';
 import { Composer } from '@/components/chat/Composer';
@@ -31,6 +32,7 @@ import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
 import { useCall } from '@/state/call';
 import { useTheme } from '@/theme/ThemeContext';
+import { useT } from '@/i18n';
 import { font, Palette } from '@/theme/theme';
 import { dayLabel } from '@/lib/format';
 
@@ -45,6 +47,7 @@ export default function ConversationScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { c, scheme } = useTheme();
+  const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams<{ id: string; name: string; avatar: string }>();
   const me = Number(user?.userId);
@@ -63,6 +66,7 @@ export default function ConversationScreen() {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [sheetMsg, setSheetMsg] = useState<Message | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
   const [forwardMsg, setForwardMsg] = useState<ForwardPayload | null>(null);
   const [forwardMany, setForwardMany] = useState<ForwardPayload[] | null>(null);
   const [reactorsMsg, setReactorsMsg] = useState<Message | null>(null);
@@ -313,19 +317,12 @@ export default function ConversationScreen() {
     }
   };
   const retryMessage = (m: Message) =>
-    Alert.alert('Сообщение не отправлено', undefined, [
-      { text: 'Повторить отправку', onPress: () => resendMessage(m) },
-      { text: 'Удалить', style: 'destructive', onPress: () => setMessages((prev) => prev.filter((x) => Number(x.id) !== Number(m.id))) },
-      { text: 'Отмена', style: 'cancel' },
+    Alert.alert(t('msg.notSent'), undefined, [
+      { text: t('msg.resend'), onPress: () => resendMessage(m) },
+      { text: t('common.delete'), style: 'destructive', onPress: () => setMessages((prev) => prev.filter((x) => Number(x.id) !== Number(m.id))) },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
 
-  const attach = () => {
-    Alert.alert('Share', undefined, [
-      { text: 'Photo / Video', onPress: pickMedia },
-      { text: 'File', onPress: pickFile },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
   const pickMedia = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -333,6 +330,14 @@ export default function ConversationScreen() {
     if (res.canceled || !res.assets?.[0]) return;
     const a = res.assets[0];
     sendAsset({ uri: a.uri, name: a.fileName || `media_${Date.now()}`, mime: a.mimeType || (a.type === 'video' ? 'video/mp4' : 'image/jpeg') });
+  };
+  const takePhoto = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
+    sendAsset({ uri: a.uri, name: a.fileName || `photo_${Date.now()}.jpg`, mime: a.mimeType || 'image/jpeg' });
   };
   const pickFile = async () => {
     const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
@@ -440,10 +445,10 @@ export default function ConversationScreen() {
   const deleteSelected = () => {
     const ids = [...sel.selected];
     if (ids.length === 0) return;
-    Alert.alert('Удалить сообщения', `Удалить ${ids.length} ${ids.length === 1 ? 'сообщение' : 'сообщений'}?`, [
-      { text: 'Отмена', style: 'cancel' },
+    Alert.alert(t('msg.deleteTitle'), t('msg.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Удалить',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           const idSet = new Set(ids);
@@ -604,7 +609,7 @@ export default function ConversationScreen() {
               onCancelEdit={() => setEditing(null)}
               onSend={sendText}
               onSaveEdit={saveEdit}
-              onAttach={attach}
+              onAttach={() => setAttachOpen(true)}
               onSendAudio={sendAsset}
               onTyping={emitTyping}
             />
@@ -612,6 +617,13 @@ export default function ConversationScreen() {
         )}
       </KeyboardAvoidingView>
 
+      <AttachSheet
+        visible={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        onCamera={takePhoto}
+        onGallery={pickMedia}
+        onFile={pickFile}
+      />
       <MessageActionSheet
         message={sheetMsg}
         isOut={!!sheetMsg && Number(sheetMsg.fromUserId) === me}
@@ -629,7 +641,7 @@ export default function ConversationScreen() {
       <ReactionsViewer
         visible={!!reactorsMsg}
         reactions={(reactorsMsg?.reactions || []).map((r) => ({ userId: Number(r.userId), emoji: r.emoji }))}
-        resolveName={(id) => (id === me ? 'Вы' : partnerName)}
+        resolveName={(id) => (id === me ? t('feed.you') : partnerName)}
         resolveAvatar={(id) => (id === me ? undefined : (params.avatar || undefined))}
         onClose={() => setReactorsMsg(null)}
       />
