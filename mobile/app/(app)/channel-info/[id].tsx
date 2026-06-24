@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,7 +98,13 @@ export default function ChannelInfoScreen() {
 
   // Owner adds a subscriber: join with addedBy=ownerId (works for private & public).
   const addMember = async (u: PickUser) => {
-    await channelsApi.join(channelId, u.id, myId);
+    try {
+      await channelsApi.join(channelId, u.id, myId);
+    } catch (e: any) {
+      // Surface the server's reason (e.g. "owner only") instead of failing silently.
+      Alert.alert(t('members.add'), e?.response?.data?.error || e?.response?.data?.message || t('story.tryAgain'));
+      throw e; // let the sheet keep the row tappable for a retry
+    }
     setMembers((prev) =>
       prev.some((m) => Number(m.userId ?? m.id) === u.id)
         ? prev

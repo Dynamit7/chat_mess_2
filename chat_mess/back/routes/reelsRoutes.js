@@ -170,22 +170,26 @@ router.get('/feed', async (req, res) => {
       offset,
     });
 
-    // Add user-specific data (liked status)
-    const reelsWithUserData = await Promise.all(reels.map(async (reel) => {
+    // Add user-specific data (liked status). Batch the liked lookup into ONE
+    // query instead of one ReelLike.findOne per reel (was N+1 — 10 extra
+    // round-trips per feed page).
+    let likedSet = new Set();
+    if (userId && reels.length) {
+      const likes = await ReelLike.findAll({
+        where: { userId: parseInt(userId), reelId: { [Op.in]: reels.map((r) => r.id) } },
+        attributes: ['reelId'],
+      });
+      likedSet = new Set(likes.map((l) => l.reelId));
+    }
+    const followingSet = new Set(followingIds);
+    const reelsWithUserData = reels.map((reel) => {
       const reelData = reel.toJSON();
-
       if (userId) {
-        const liked = await ReelLike.findOne({
-          where: { reelId: reel.id, userId: parseInt(userId) },
-        });
-        reelData.isLiked = !!liked;
-
-        // Check if following creator
-        reelData.isFollowing = followingIds.includes(reel.userId);
+        reelData.isLiked = likedSet.has(reel.id);
+        reelData.isFollowing = followingSet.has(reel.userId);
       }
-
       return reelData;
-    }));
+    });
 
     res.json(reelsWithUserData);
   } catch (error) {
@@ -223,16 +227,20 @@ router.get('/discover', async (req, res) => {
     });
 
     // Attach per-user liked status so the heart renders correctly in the feed.
-    const reelsWithUserData = await Promise.all(reels.map(async (reel) => {
+    // One batched query instead of one ReelLike.findOne per reel (was N+1).
+    let likedSet = new Set();
+    if (userId && reels.length) {
+      const likes = await ReelLike.findAll({
+        where: { userId: parseInt(userId), reelId: { [Op.in]: reels.map((r) => r.id) } },
+        attributes: ['reelId'],
+      });
+      likedSet = new Set(likes.map((l) => l.reelId));
+    }
+    const reelsWithUserData = reels.map((reel) => {
       const reelData = reel.toJSON();
-      if (userId) {
-        const liked = await ReelLike.findOne({
-          where: { reelId: reel.id, userId: parseInt(userId) },
-        });
-        reelData.isLiked = !!liked;
-      }
+      if (userId) reelData.isLiked = likedSet.has(reel.id);
       return reelData;
-    }));
+    });
 
     res.json(reelsWithUserData);
   } catch (error) {

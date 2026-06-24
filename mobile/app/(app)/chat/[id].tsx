@@ -158,12 +158,24 @@ export default function ConversationScreen() {
     setLoadingOlder(false);
     socket.emit('joinRoom', `chat_${chatKey}`);
 
-    // online → API (first page) + cache; offline → read local SQLite
+    // Cache-first (Telegram-style): paint cached messages instantly so re-opening
+    // a chat never flashes a spinner, then reconcile with the server in the
+    // background. Spinner only shows on a true cold open (no cache yet).
+    const key = cacheKeys.directMessages(chatKey);
+    // Fire-and-forget cache paint — must NOT block the network path: SQLite is
+    // unavailable on web and `cacheGet` would otherwise hang the whole load
+    // forever (perpetual spinner). Never clobber a fresh network result.
+    cacheGet<Message[]>(key).then((cached) => {
+      if (alive && cached?.length) {
+        setMessages((prev) => (prev.length ? prev : cached));
+        setLoading(false);
+        scrollToEnd(false);
+      }
+    }).catch(() => {});
     (async () => {
-      const key = cacheKeys.directMessages(chatKey);
       if (!(await getIsOnline())) {
-        const cached = await cacheGet<Message[]>(key);
-        if (alive) { setMessages(cached || []); setHasMore(false); setLoading(false); scrollToEnd(false); }
+        // Offline: rely on the cache paint above; just clear the spinner.
+        if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
         return;
       }
       try {
@@ -177,8 +189,7 @@ export default function ConversationScreen() {
         scrollToEnd(false);
         cacheSet(key, list.slice(-50)); // keep most recent messages for offline
       } catch {
-        const cached = await cacheGet<Message[]>(key);
-        if (alive) { if (cached) setMessages(cached); setHasMore(false); setLoading(false); scrollToEnd(false); }
+        if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
       }
     })();
 
@@ -281,17 +292,20 @@ export default function ConversationScreen() {
   // Send file
   const sendAsset = async (asset: { uri: string; name?: string; mime?: string }) => {
     const kind = fileKind(asset.mime || '');
+    // The direct-message API validates type against a fixed list that uses
+    // 'voice' (not 'audio') for voice notes — map it so the server accepts it.
+    const type = kind === 'audio' ? 'voice' : kind;
     setUploadPct(0);
     try {
       const url = await uploadFile({ uri: asset.uri, name: asset.name, type: asset.mime });
       const tId = tempId();
       const optimistic: Message = {
-        id: tId, tempId: tId, fromUserId: me, toUserId: partnerId, text: '', type: kind, fileUrl: url,
+        id: tId, tempId: tId, fromUserId: me, toUserId: partnerId, text: '', type, fileUrl: url,
         filename: asset.name, createdAt: new Date().toISOString(), isRead: false, reactions: [], status: 'sending',
       };
       setMessages((prev) => [...prev, optimistic]);
       scrollToEnd();
-      const res = await messagesApi.send({ fromUserId: me, toUserId: partnerId, text: '', type: kind, fileUrl: url, filename: asset.name, tempId: tId });
+      const res = await messagesApi.send({ fromUserId: me, toUserId: partnerId, text: '', type, fileUrl: url, filename: asset.name, tempId: tId });
       if (res?.message) mergeMessage(res.message);
     } catch {
       Alert.alert('Upload failed', 'Could not send that file. Try a smaller one.');
@@ -301,7 +315,8 @@ export default function ConversationScreen() {
   };
 
   // Re-send a message that previously failed (text + already-uploaded files alike).
-  const resendMessage = async (m: Message) => {
+  // useCallback so MessageBubble's React.memo holds (handler identity stays stable).
+  const resendMessage = useCallback(async (m: Message) => {
     const tId = tempId();
     setMessages((prev) => prev.map((x) => (Number(x.id) === Number(m.id) ? { ...x, id: tId, tempId: tId, status: 'sending' } : x)));
     try {
@@ -315,13 +330,13 @@ export default function ConversationScreen() {
     } catch {
       setMessages((prev) => prev.map((x) => (x.tempId === tId ? { ...x, status: 'failed' } : x)));
     }
-  };
-  const retryMessage = (m: Message) =>
+  }, [me, partnerId, mergeMessage]);
+  const retryMessage = useCallback((m: Message) =>
     Alert.alert(t('msg.notSent'), undefined, [
       { text: t('msg.resend'), onPress: () => resendMessage(m) },
       { text: t('common.delete'), style: 'destructive', onPress: () => setMessages((prev) => prev.filter((x) => Number(x.id) !== Number(m.id))) },
       { text: t('common.cancel'), style: 'cancel' },
-    ]);
+    ]), [t, resendMessage]);
 
   const pickMedia = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -347,7 +362,7 @@ export default function ConversationScreen() {
   };
 
   // Actions from the sheet
-  const reactTo = async (msg: Message, emoji: string) => {
+  const reactTo = useCallback(async (msg: Message, emoji: string) => {
     setSheetMsg(null);
     const mine = (msg.reactions || []).find((r) => Number(r.userId) === me && r.emoji === emoji);
     try {
@@ -359,7 +374,9 @@ export default function ConversationScreen() {
         await messagesApi.react(msg.id, me, emoji);
       }
     } catch {}
-  };
+  }, [me]);
+  // Stable per-message select toggle so memoized bubbles don't re-render on every list change.
+  const toggleSelect = useCallback((m: Message) => sel.toggle(Number(m.id)), [sel.toggle]);
 
   const onSheetAction = (action: 'reply' | 'edit' | 'copy' | 'forward' | 'delete' | 'select') => {
     const msg = sheetMsg;
@@ -534,6 +551,9 @@ export default function ConversationScreen() {
             scrollEventThrottle={16}
             onEndReached={loadOlder}
             onEndReachedThreshold={0.4}
+            windowSize={11}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
             ListFooterComponent={
               loadingOlder ? (
                 <View style={styles.olderLoader}><ActivityIndicator size="small" color={c.accent} /></View>
@@ -568,7 +588,7 @@ export default function ConversationScreen() {
                     selectionMode={sel.active}
                     selected={sel.isSelected(Number(item.id))}
                     selectable={isOut}
-                    onToggleSelect={(m) => sel.toggle(Number(m.id))}
+                    onToggleSelect={toggleSelect}
                   />
                 </View>
               );

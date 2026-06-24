@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Modal, View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, ActivityIndicator,
+  TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { SlideInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
@@ -130,8 +131,10 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
       }
       onSent?.();
       close();
-    } catch {
-      // silent — toast can be added later
+    } catch (e: any) {
+      // Surface the real failure instead of silently doing nothing — otherwise a
+      // forward that the server rejected looks like the button simply didn't work.
+      Alert.alert(t('forward.one'), e?.response?.data?.error || e?.response?.data?.message || t('story.tryAgain'));
     } finally {
       setSending(false);
     }
@@ -156,13 +159,13 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={close}
       statusBarTranslucent
     >
       <Pressable style={styles.backdrop} onPress={close} />
 
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+      <Animated.View entering={SlideInDown.duration(220)} style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.handle} />
 
         {/* Header */}
@@ -296,7 +299,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
             </Pressable>
           </View>
         )}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

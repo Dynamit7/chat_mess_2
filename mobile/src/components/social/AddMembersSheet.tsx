@@ -4,6 +4,7 @@ import {
   TextInput, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
 import { usersApi } from '@/lib/api';
@@ -85,9 +86,9 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
   }, [busyId, added, onPick]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+      <Animated.View entering={SlideInDown.duration(220)} style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.handle} />
         <View style={styles.header}>
           <Text style={styles.title}>{title ?? t('members.add')}</Text>
@@ -158,7 +159,7 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
             }}
           />
         )}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

@@ -130,12 +130,23 @@ export default function ChannelFeed() {
     setLoadingOlder(false);
     socket.emit('joinChannel', { channelId, userId: me });
     socket.emit('joinRoom', `channel_${channelId}`);
-    // online → API (first page) + cache; offline → read local SQLite
+    // Cache-first (Telegram-style): paint cached posts instantly so re-opening a
+    // channel never flashes a spinner, then reconcile with the server in the
+    // background. Spinner only shows on a true cold open (no cache yet).
+    const key = cacheKeys.channelMessages(channelId);
+    // Fire-and-forget cache paint — must NOT block the network path: SQLite is
+    // unavailable on web and `cacheGet` would otherwise hang the whole load
+    // forever (perpetual spinner). Never clobber a fresh network result.
+    cacheGet<Post[]>(key).then((cached) => {
+      if (alive && cached?.length) {
+        setPosts((prev) => (prev.length ? prev : cached));
+        setLoading(false);
+      }
+    }).catch(() => {});
     (async () => {
-      const key = cacheKeys.channelMessages(channelId);
       if (!(await getIsOnline())) {
-        const cached = await cacheGet<Post[]>(key);
-        if (alive) { setPosts(cached || []); setHasMore(false); setLoading(false); }
+        // Offline: rely on the cache paint above; just clear the spinner.
+        if (alive) { setHasMore(false); setLoading(false); }
         return;
       }
       try {
@@ -149,8 +160,7 @@ export default function ChannelFeed() {
         cacheSet(key, arr.slice(-50));
         loadReactions(arr, () => alive);
       } catch {
-        const cached = await cacheGet<Post[]>(key);
-        if (alive) { if (cached) setPosts(cached); setHasMore(false); setLoading(false); }
+        if (alive) { setHasMore(false); setLoading(false); }
       }
     })();
     channelsApi.updateLastSeen(channelId, me).catch(() => {});
@@ -380,6 +390,9 @@ export default function ChannelFeed() {
             showsVerticalScrollIndicator={false}
             onEndReached={loadOlder}
             onEndReachedThreshold={0.4}
+            windowSize={11}
+            initialNumToRender={12}
+            maxToRenderPerBatch={10}
             ListFooterComponent={loadingOlder ? <View style={styles.olderLoader}><ActivityIndicator size="small" color={c.accent} /></View> : null}
           />
         )}

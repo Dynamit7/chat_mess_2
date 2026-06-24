@@ -47,7 +47,7 @@ export function AttachSheet({
         <View style={s.scrim} />
       </Pressable>
 
-      <Animated.View entering={SlideInDown.springify().damping(18)} style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
+      <Animated.View entering={SlideInDown.duration(220)} style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={s.handle} />
         <Text style={s.title}>{t('attach.title')}</Text>
         <View style={s.tiles}>

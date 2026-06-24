@@ -4,7 +4,15 @@ const { createClient } = require('redis');
 // Создание Redis клиента
 const redisClient = createClient({
   url: process.env.REDIS_URL || 'redis://localhost:6379',
+  // Если Redis недоступен — команды должны падать сразу, а не копиться в очереди
+  // и висеть бесконечно. Иначе один зависший presence-запрос (isUserOnline) в
+  // getChats блокирует весь ответ, и у клиента вечно крутится спиннер.
+  disableOfflineQueue: true,
   socket: {
+    // Не даём connect() висеть вечно, если TCP проходит, но рукопожатие — нет
+    // (типично при сломанной docker-сети: порт принимает соединение, но Redis
+    // не отвечает на команды).
+    connectTimeout: 3000,
     reconnectStrategy: (retries) => {
       if (retries > 10) {
         console.error('Redis: Too many reconnection attempts');
@@ -14,6 +22,15 @@ const redisClient = createClient({
     },
   },
 });
+
+// Оборачивает Redis-вызов жёстким таймаутом, чтобы любой подвисший запрос
+// деградировал к безопасному значению вместо зависания всего HTTP-ответа.
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
 
 // Обработка ошибок
 redisClient.on('error', (err) => {
@@ -84,7 +101,13 @@ async function setUserOffline(userId) {
 
 async function isUserOnline(userId) {
   try {
-    const result = await redisClient.exists(`user:online:${userId}`);
+    // Presence — не критичная информация: если Redis молчит дольше 1с, считаем
+    // пользователя оффлайн, лишь бы не вешать getChats/getGroups и т.п.
+    const result = await withTimeout(
+      redisClient.exists(`user:online:${userId}`),
+      1000,
+      0
+    );
     return result === 1;
   } catch (err) {
     console.error('Redis: Error checking user online', err);

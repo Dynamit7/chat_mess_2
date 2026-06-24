@@ -60,7 +60,7 @@ export function MessageActionSheet({
         <BlurView intensity={20} tint={scheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <View style={styles.scrim} />
       </Pressable>
-      <Animated.View entering={SlideInDown.springify().damping(18)} style={[styles.sheet, { paddingBottom: insets.bottom + 14 }]}>
+      <Animated.View entering={SlideInDown.duration(220)} style={[styles.sheet, { paddingBottom: insets.bottom + 14 }]}>
         {showAll ? (
           <View style={styles.gridPanel}>
             <View style={styles.gridHeader}>

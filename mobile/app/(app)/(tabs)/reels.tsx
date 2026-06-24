@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, RefreshControl,
@@ -29,6 +29,10 @@ import { relativeShort } from '@/lib/format';
 type Media = { uri: string; name: string; type: string; kind: 'image' | 'video' };
 type S = ReturnType<typeof makeStyles>;
 
+// Must match the backend `/api/reels/feed` default `limit` — a page shorter than
+// this means we've reached the end and can stop fetching further pages.
+const FEED_PAGE_SIZE = 10;
+
 const fmt = (n: number) => {
   n = Number(n) || 0;
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
@@ -58,7 +62,12 @@ export default function FeedScreen() {
   const [storiesBusy, setStoriesBusy] = useState(false);
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Pagination cursor for the feed (mirrored in a ref so loadMore stays stable).
+  const pageRef = useRef(1);
+  const loadingMoreRef = useRef(false);
   const [creating, setCreating] = useState(false);
   const [commentsFor, setCommentsFor] = useState<any | null>(null);
   const [forwardFor, setForwardFor] = useState<any | null>(null);
@@ -81,7 +90,7 @@ export default function FeedScreen() {
     if (!Number.isFinite(me)) return; // wait for the session before calling the API
     try {
       const [feed, disc] = await Promise.all([
-        reelsApi.feed(me).catch(() => []),
+        reelsApi.feed(me, 1).catch(() => []),
         reelsApi.discover(1, me).catch(() => []),
       ]);
       const a = Array.isArray(feed) ? feed : feed?.reels || [];
@@ -93,10 +102,41 @@ export default function FeedScreen() {
       // Newest first for a feed.
       const merged = [...map.values()].sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
       setPosts(merged);
+      // Reset the pagination cursor; only the feed endpoint is paginated, so a
+      // short first page means there are no further feed pages to fetch.
+      pageRef.current = 1;
+      setHasMore(a.length >= FEED_PAGE_SIZE);
     } finally {
       setLoading(false);
     }
   }, [me]);
+
+  // Append the next feed page when the user nears the end (infinite scroll), so
+  // the feed never loads everything up front. Appends in order (no global
+  // re-sort) to keep already-rendered rows from jumping around mid-scroll.
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore || loading || refreshing) return;
+    if (!Number.isFinite(me)) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const next = pageRef.current + 1;
+    try {
+      const feed = await reelsApi.feed(me, next).catch(() => []);
+      const arr = Array.isArray(feed) ? feed : feed?.reels || [];
+      if (arr.length < FEED_PAGE_SIZE) setHasMore(false);
+      if (arr.length) {
+        setPosts((prev) => {
+          const seen = new Set(prev.map((p) => p.id));
+          const fresh = arr.filter((r: any) => r && r.id != null && !seen.has(r.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+        pageRef.current = next;
+      }
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [hasMore, loading, refreshing, me]);
 
   useEffect(() => { loadStories(); loadPosts(); }, [loadStories, loadPosts]);
 
@@ -118,17 +158,23 @@ export default function FeedScreen() {
   }).current;
   const viewConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
-  const toggleLike = (post: any) => {
+  // Handlers are useCallback + receive the post, so each memoized FeedPost keeps
+  // stable props and only the affected post re-renders (not the whole feed).
+  const toggleLike = useCallback((post: any) => {
     setPosts((prev) => prev.map((r) => r.id === post.id
       ? { ...r, isLiked: !r.isLiked, likesCount: (r.likesCount || 0) + (r.isLiked ? -1 : 1) } : r));
-    reelsApi.like(post.id, me).catch(() => {});
-  };
-  const follow = (post: any) => {
+    reelsApi.like(post.id, meRef.current).catch(() => {});
+  }, []);
+  const follow = useCallback((post: any) => {
     setPosts((prev) => prev.map((r) => r.userId === post.userId ? { ...r, isFollowing: true } : r));
-    reelsApi.follow(me, post.userId).catch(() => {});
-  };
+    reelsApi.follow(meRef.current, post.userId).catch(() => {});
+  }, []);
   // Open the forward sheet so the post can actually be sent to a chat/group/channel.
-  const share = (post: any) => setForwardFor(post);
+  const share = useCallback((post: any) => setForwardFor(post), []);
+  const openProfile = useCallback((post: any) => router.push({
+    pathname: '/(app)/user/[id]',
+    params: { id: String(post.userId), name: post.creator?.username || '', avatar: post.creator?.avatar || '' },
+  }), [router]);
   // Called only after the forward succeeds — record the share + bump the counter.
   const onForwarded = (post: any) => {
     setPosts((prev) => prev.map((r) => r.id === post.id ? { ...r, sharesCount: (r.sharesCount || 0) + 1 } : r));
@@ -147,14 +193,15 @@ export default function FeedScreen() {
       senderUsername: post.creator?.username || post.creator?.nickname || 'User',
     };
   };
-  const removePost = (post: any) =>
+  const removePost = useCallback((post: any) =>
     Alert.alert(t('feed.deletePost'), t('feed.deletePostConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('common.delete'), style: 'destructive', onPress: () => {
         setPosts((prev) => prev.filter((r) => r.id !== post.id));
-        reelsApi.remove(post.id, me).catch(() => {});
+        reelsApi.remove(post.id, meRef.current).catch(() => {});
       } },
-    ]);
+    ]), [t]);
+  const openComments = useCallback((post: any) => setCommentsFor(post), []);
 
   // Multi-select story upload — pick several photos/videos at once.
   const addStory = async () => {
@@ -203,7 +250,19 @@ export default function FeedScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
           onViewableItemsChanged={onViewable}
           viewabilityConfig={viewConfig}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.6}
+          // Feed posts (esp. videos) are heavy — keep only a few mounted at once.
+          windowSize={5}
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          removeClippedSubviews
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.accent} />}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 24 }}><ActivityIndicator color={c.accent} /></View>
+            ) : null
+          }
           ListHeaderComponent={
             <StoriesStrip
               owners={owners}
@@ -229,12 +288,12 @@ export default function FeedScreen() {
               active={item.id === activeVideoId && focused}
               styles={styles}
               c={c}
-              onLike={() => toggleLike(item)}
-              onComment={() => setCommentsFor(item)}
-              onShare={() => share(item)}
-              onFollow={() => follow(item)}
-              onDelete={() => removePost(item)}
-              onOpenProfile={() => router.push({ pathname: '/(app)/user/[id]', params: { id: String(item.userId), name: item.creator?.username || '', avatar: item.creator?.avatar || '' } })}
+              onLike={toggleLike}
+              onComment={openComments}
+              onShare={share}
+              onFollow={follow}
+              onDelete={removePost}
+              onOpenProfile={openProfile}
             />
           )}
         />
@@ -330,7 +389,10 @@ function StoriesStrip({ owners, me, username, avatar, busy, onAdd, onOpen, style
 // ─────────────────────────────────────────────────────────────────────────────
 //  Feed post card
 // ─────────────────────────────────────────────────────────────────────────────
-function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDelete, onOpenProfile, styles, c }: any) {
+// Memoized: parent passes stable (useCallback) handlers and the same `post`
+// reference unless that specific post changed, so only the affected card
+// re-renders (a like, an active-video change) instead of the whole feed.
+const FeedPost = memo(function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDelete, onOpenProfile, styles, c }: any) {
   const { t } = useT();
   const creator = post.creator || {};
   const isMine = Number(post.userId) === me;
@@ -339,19 +401,19 @@ function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDe
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
-        <Pressable onPress={onOpenProfile}><Avatar name={creator.username} src={creator.avatar} size={46} ring={post.isFollowing} palette={c} /></Pressable>
-        <Pressable style={{ flex: 1 }} onPress={onOpenProfile}>
+        <Pressable onPress={() => onOpenProfile(post)}><Avatar name={creator.username} src={creator.avatar} size={46} ring={post.isFollowing} palette={c} /></Pressable>
+        <Pressable style={{ flex: 1 }} onPress={() => onOpenProfile(post)}>
           <Text style={styles.authorName} numberOfLines={1}>{creator.username || creator.nickname || 'User'}</Text>
           <Text style={styles.postTime}>{relativeShort(post.createdAt)}</Text>
         </Pressable>
         {!isMine && !post.isFollowing ? (
-          <Pressable onPress={onFollow} style={styles.followBtn}>
+          <Pressable onPress={() => onFollow(post)} style={styles.followBtn}>
             <Ionicons name="add" size={15} color={c.accent} />
             <Text style={styles.followText}>{t('info.subscribe')}</Text>
           </Pressable>
         ) : null}
         {isMine ? (
-          <Pressable onPress={onDelete} hitSlop={8} style={styles.moreBtn}>
+          <Pressable onPress={() => onDelete(post)} hitSlop={8} style={styles.moreBtn}>
             <Ionicons name="ellipsis-horizontal" size={20} color={c.textFaint} />
           </Pressable>
         ) : null}
@@ -372,13 +434,13 @@ function FeedPost({ post, me, active, onLike, onComment, onShare, onFollow, onDe
       ) : null}
 
       <View style={styles.actions}>
-        <ActionButton icon={post.isLiked ? 'heart' : 'heart-outline'} color={post.isLiked ? c.danger : c.textDim} label={fmt(post.likesCount)} onPress={onLike} styles={styles} />
-        <ActionButton icon="chatbubble-outline" color={c.textDim} label={fmt(post.commentsCount)} onPress={onComment} styles={styles} />
-        <ActionButton icon="arrow-redo-outline" color={c.textDim} label={fmt(post.sharesCount)} onPress={onShare} styles={styles} />
+        <ActionButton icon={post.isLiked ? 'heart' : 'heart-outline'} color={post.isLiked ? c.danger : c.textDim} label={fmt(post.likesCount)} onPress={() => onLike(post)} styles={styles} />
+        <ActionButton icon="chatbubble-outline" color={c.textDim} label={fmt(post.commentsCount)} onPress={() => onComment(post)} styles={styles} />
+        <ActionButton icon="arrow-redo-outline" color={c.textDim} label={fmt(post.sharesCount)} onPress={() => onShare(post)} styles={styles} />
       </View>
     </View>
   );
-}
+});
 
 function ActionButton({ icon, color, label, onPress, styles }: { icon: any; color: string; label: string; onPress: () => void; styles: S }) {
   return (
@@ -389,7 +451,7 @@ function ActionButton({ icon, color, label, onPress, styles }: { icon: any; colo
   );
 }
 
-function VideoPost({ uri, active, styles }: { uri: string; active: boolean; styles: S }) {
+const VideoPost = memo(function VideoPost({ uri, active, styles }: { uri: string; active: boolean; styles: S }) {
   const player = useVideoPlayer(uri, (p) => { p.loop = true; p.muted = true; });
   const [muted, setMuted] = useState(true);
   const [paused, setPaused] = useState(false);
@@ -411,7 +473,7 @@ function VideoPost({ uri, active, styles }: { uri: string; active: boolean; styl
       </Pressable>
     </Pressable>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Create post (universal: image / video / text) — prettier modal

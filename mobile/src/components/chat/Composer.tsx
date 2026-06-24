@@ -254,29 +254,37 @@ export function Composer({
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  wrap: { paddingHorizontal: 12, paddingTop: 8, gap: 8 },
+  // Hairline separator above the composer, like Telegram — keeps the input
+  // visually detached from the last message without a heavy bar.
+  wrap: {
+    paddingHorizontal: 10, paddingTop: 8, gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.stroke,
+  },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.glass, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: c.stroke },
   bannerBar: { width: 3, height: 32, borderRadius: 2, backgroundColor: c.accent },
   bannerTitle: { color: c.accent, fontFamily: font.bodySemi, fontSize: 12 },
   bannerText: { color: c.textDim, fontFamily: font.body, fontSize: 13, marginTop: 1 },
-  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+  // Borderless icon button — no boxy frame, just the glyph (Telegram style).
   attach: {
-    width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.glass2, borderWidth: 1, borderColor: c.stroke,
-    alignItems: 'center', justifyContent: 'center',
+    width: 40, height: 44, alignItems: 'center', justifyContent: 'center',
   },
+  // Soft rounded capsule. 22 = half of the 44 min-height, so a single line reads
+  // as a perfect pill while multi-line growth stays gently rounded.
   inputWrap: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: radius.lg,
+    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: 22,
     paddingLeft: 16, paddingRight: 6, minHeight: 44, maxHeight: 130,
   },
   input: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 16, paddingVertical: 10 },
   emojiBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  emojiPanel: { marginHorizontal: -12 },
-  send: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  emojiPanel: { marginHorizontal: -10 },
+  // Perfect circle for send / mic.
+  send: { width: 44, height: 44, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center' },
   sendRec: { transform: [{ scale: 1.12 }] },
   recBar: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: radius.lg,
+    backgroundColor: c.glass, borderWidth: 1, borderColor: c.stroke, borderRadius: 22,
     paddingHorizontal: 16, minHeight: 44,
   },
   recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.danger },

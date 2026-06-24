@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -58,13 +58,14 @@ function Ticks({ msg, c }: { msg: Message; c: Palette }) {
   return <Ionicons name="checkmark" size={14} color={dim} />;
 }
 
-export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect, palette = colors }: Props) {
+function MessageBubbleBase({ msg, isOut, grouped, me, onLongPress, onImagePress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect, palette = colors }: Props) {
   const c = palette;
   const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const hasText = !!(msg.text && msg.text.trim());
   const isImage = msg.type === 'image' && !!msg.fileUrl;
-  const isAudio = msg.type === 'audio' && !!msg.fileUrl;
+  // Voice notes arrive as 'voice' (direct chats / web) or 'audio' (groups) — treat both as a voice player.
+  const isAudio = (msg.type === 'audio' || msg.type === 'voice') && !!msg.fileUrl;
   const isFile = (msg.type === 'file' || msg.type === 'video') && !!msg.fileUrl;
 
   // Aggregate reactions by emoji: { '👍': { count, mine } }
@@ -197,6 +198,11 @@ export function MessageBubble({ msg, isOut, grouped, me, onLongPress, onImagePre
 
   return body;
 }
+
+// Memoized: in a long conversation the FlatList re-renders on every keystroke,
+// new message and scroll tick. Without this, all bubbles re-render each time.
+// Parent passes stable (useCallback) handlers so the memo actually holds.
+export const MessageBubble = memo(MessageBubbleBase);
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   rowWrap: { paddingHorizontal: 14 },

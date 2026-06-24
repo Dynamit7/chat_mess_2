@@ -329,6 +329,10 @@ export default function ChatsScreen() {
           data={visibleChats}
           keyExtractor={(c) => String(c.partnerId)}
           keyboardShouldPersistTaps="handled"
+          windowSize={11}
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          removeClippedSubviews
           renderItem={({ item }) => {
             const id = Number(item.partnerId);
             return (

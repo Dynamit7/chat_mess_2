@@ -39,6 +39,8 @@ const fileKind = (mime = '') =>
   mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
 
 type GMsg = Omit<GroupMsg, 'id'> & { id: number | string; status?: 'sending' | 'failed' };
+// One rendered row: the raw group message plus its precomputed Message mapping.
+type Row = { raw: GMsg; msg: Message };
 
 export default function GroupConversation() {
   const { user } = useAuth();
@@ -77,7 +79,7 @@ export default function GroupConversation() {
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
 
-  const listRef = useRef<FlatList<GMsg>>(null);
+  const listRef = useRef<FlatList<Row>>(null);
   const typingTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const atBottomRef = useRef(true);
 
@@ -151,12 +153,24 @@ export default function GroupConversation() {
     setLoadingOlder(false);
     socket.emit('joinGroup', { groupId, userId: me });
     socket.emit('joinRoom', `group_${groupId}`);
-    // online → API (first page) + cache; offline → read local SQLite
+    // Cache-first (Telegram-style): paint cached messages instantly so re-opening
+    // a group never flashes a spinner, then reconcile with the server in the
+    // background. Spinner only shows on a true cold open (no cache yet).
+    const key = cacheKeys.groupMessages(groupId);
+    // Fire-and-forget cache paint — must NOT block the network path: SQLite is
+    // unavailable on web and `cacheGet` would otherwise hang the whole load
+    // forever (perpetual spinner). Never clobber a fresh network result.
+    cacheGet<GMsg[]>(key).then((cached) => {
+      if (alive && cached?.length) {
+        setMessages((prev) => (prev.length ? prev : cached));
+        setLoading(false);
+        scrollToEnd(false);
+      }
+    }).catch(() => {});
     (async () => {
-      const key = cacheKeys.groupMessages(groupId);
       if (!(await getIsOnline())) {
-        const cached = await cacheGet<GMsg[]>(key);
-        if (alive) { setMessages(cached || []); setHasMore(false); setLoading(false); scrollToEnd(false); }
+        // Offline: rely on the cache paint above; just clear the spinner.
+        if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
         return;
       }
       try {
@@ -170,8 +184,7 @@ export default function GroupConversation() {
         scrollToEnd(false);
         cacheSet(key, list.slice(-50));
       } catch {
-        const cached = await cacheGet<GMsg[]>(key);
-        if (alive) { if (cached) setMessages(cached); setHasMore(false); setLoading(false); scrollToEnd(false); }
+        if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
       }
     })();
     groupsApi.members(groupId).then((m) => alive && setMembers(m || [])).catch(() => {});
@@ -270,24 +283,29 @@ export default function GroupConversation() {
     }
   };
 
+  // Live mirror of messages so stable (useCallback) handlers can read the latest
+  // list without being recreated on every change (keeps memoized bubbles still).
+  const messagesRef = useRef<GMsg[]>([]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   // Re-send a text message that previously failed; the socket echo reconciles it.
-  const resendGroupMessage = async (m: GMsg) => {
+  const resendGroupMessage = useCallback(async (m: GMsg) => {
     setMessages((prev) => prev.map((x) => (Number(x.id) === Number(m.id) ? { ...x, status: 'sending' } : x)));
     try {
       await groupsApi.sendMessage(groupId, { userId: me, text: m.text || '', replyToId: m.replyToId ?? undefined });
     } catch {
       setMessages((prev) => prev.map((x) => (Number(x.id) === Number(m.id) ? { ...x, status: 'failed' } : x)));
     }
-  };
-  const retryMessage = (msg: Message) => {
-    const m = messages.find((x) => Number(x.id) === Number(msg.id));
+  }, [groupId, me]);
+  const retryMessage = useCallback((msg: Message) => {
+    const m = messagesRef.current.find((x) => Number(x.id) === Number(msg.id));
     if (!m) return;
     Alert.alert(t('msg.notSent'), undefined, [
       { text: t('msg.resend'), onPress: () => resendGroupMessage(m) },
       { text: t('common.delete'), style: 'destructive', onPress: () => setMessages((prev) => prev.filter((x) => Number(x.id) !== Number(msg.id))) },
       { text: t('common.cancel'), style: 'cancel' },
     ]);
-  };
+  }, [t, resendGroupMessage]);
   const pickMedia = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -318,15 +336,18 @@ export default function GroupConversation() {
     finally { setJoining(false); }
   };
 
-  const react = async (mId: number, emoji: string) => {
+  const react = useCallback(async (mId: number, emoji: string) => {
     setSheetMsg(null);
-    const existing = (reactionsMap[mId] || []).find((r) => r.userId === me && r.emoji === emoji);
     setReactionsMap((prev) => {
       const list = prev[mId] || [];
+      const existing = list.find((r) => r.userId === me && r.emoji === emoji);
       return { ...prev, [mId]: existing ? list.filter((r) => !(r.userId === me && r.emoji === emoji)) : [...list, { userId: me, emoji }] };
     });
     try { await groupsApi.react(groupId, mId, me, emoji); } catch {}
-  };
+  }, [groupId, me]);
+  // Stable wrappers so memoized bubbles keep their identity across list updates.
+  const onReactBubble = useCallback((mm: Message, emoji: string) => react(Number(mm.id), emoji), [react]);
+  const toggleSelect = useCallback((mm: Message) => sel.toggle(Number(mm.id)), [sel.toggle]);
 
   const onSheetAction = (action: 'reply' | 'edit' | 'copy' | 'forward' | 'delete' | 'select') => {
     const msg = sheetMsg;
@@ -375,9 +396,15 @@ export default function GroupConversation() {
   });
 
   const visible = messages.filter((m) => !m.isDeleted);
-  // Inverted list renders newest-first, so the latest message is at the bottom
-  // with no scrolling on entry. Reverse a copy for display only.
-  const data = [...visible].reverse();
+  // Inverted list renders newest-first, so the latest message is at the bottom.
+  // Memoize the raw→Message mapping keyed on the data that affects it, so each
+  // bubble's `msg` prop keeps a stable identity and React.memo can skip renders.
+  // Without this, toMessage() built a fresh object every render and defeated memo.
+  const rows = useMemo(() => {
+    const ordered = [...messages.filter((m) => !m.isDeleted)].reverse();
+    return ordered.map((raw) => ({ raw, msg: toMessage(raw) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, reactionsMap]);
   const typingNames = Object.values(typingUsers);
   // Only own messages can be deleted, so only those are selectable.
   const selectableIds = visible.filter((m) => Number(m.fromUserId) === me).map((m) => Number(m.id));
@@ -479,45 +506,49 @@ export default function GroupConversation() {
           ) : (
             <FlatList
               ref={listRef}
-              data={data}
+              data={rows}
               inverted
-              keyExtractor={(m) => String(m.id)}
+              keyExtractor={(r) => String(r.raw.id)}
               contentContainerStyle={{ paddingVertical: 12 }}
               showsVerticalScrollIndicator={false}
               onScroll={onScroll}
               scrollEventThrottle={16}
               onEndReached={loadOlder}
               onEndReachedThreshold={0.4}
+              windowSize={11}
+              initialNumToRender={15}
+              maxToRenderPerBatch={10}
               ListFooterComponent={loadingOlder ? <View style={styles.olderLoader}><ActivityIndicator size="small" color={c.accent} /></View> : null}
               renderItem={({ item, index }) => {
-                // data is newest-first, so the chronologically older message is next in the array.
-                const prev = data[index + 1];
-                const isOut = Number(item.fromUserId) === me;
-                const sameSender = prev && Number(prev.fromUserId) === Number(item.fromUserId);
-                const closeInTime = prev && new Date(item.createdAt).getTime() - new Date(prev.createdAt).getTime() < 4 * 60 * 1000;
-                const newDay = !prev || dayLabel(prev.createdAt) !== dayLabel(item.createdAt);
+                // rows is newest-first, so the chronologically older message is next in the array.
+                const raw = item.raw;
+                const prev = rows[index + 1]?.raw;
+                const isOut = Number(raw.fromUserId) === me;
+                const sameSender = prev && Number(prev.fromUserId) === Number(raw.fromUserId);
+                const closeInTime = prev && new Date(raw.createdAt).getTime() - new Date(prev.createdAt).getTime() < 4 * 60 * 1000;
+                const newDay = !prev || dayLabel(prev.createdAt) !== dayLabel(raw.createdAt);
                 const grouped = !!(sameSender && closeInTime && !newDay);
                 return (
                   <View>
-                    {newDay ? <View style={styles.daySep}><Text style={styles.dayText}>{dayLabel(item.createdAt)}</Text></View> : null}
+                    {newDay ? <View style={styles.daySep}><Text style={styles.dayText}>{dayLabel(raw.createdAt)}</Text></View> : null}
                     <MessageBubble
-                      msg={toMessage(item)}
+                      msg={item.msg}
                       isOut={isOut}
                       grouped={grouped}
                       me={me}
                       palette={c}
                       myUsername={user?.username}
-                      senderName={!isOut && !grouped ? item.sender?.username : undefined}
-                      onLongPress={(mm) => setSheetMsg(mm)}
+                      senderName={!isOut && !grouped ? raw.sender?.username : undefined}
+                      onLongPress={setSheetMsg}
                       onImagePress={setLightbox}
-                      onReactToggle={(mm, emoji) => react(Number(mm.id), emoji)}
+                      onReactToggle={onReactBubble}
                       onRetry={retryMessage}
                       onReply={setReplyTo}
                       onShowReactors={setReactorsMsg}
                       selectionMode={sel.active}
-                      selected={sel.isSelected(Number(item.id))}
+                      selected={sel.isSelected(Number(raw.id))}
                       selectable={isOut}
-                      onToggleSelect={(mm) => sel.toggle(Number(mm.id))}
+                      onToggleSelect={toggleSelect}
                     />
                   </View>
                 );
