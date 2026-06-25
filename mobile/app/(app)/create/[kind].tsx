@@ -72,7 +72,7 @@ export default function CreateEntity() {
         <Text style={styles.title}>New {noun}</Text>
         <Pressable hitSlop={10} onPress={() => router.back()}><Ionicons name="close" size={26} color={c.text} /></Pressable>
       </View>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: insets.bottom + 30, gap: 18 }} keyboardShouldPersistTaps="handled">
           <Pressable onPress={pickAvatar} style={styles.avatarPick}>
             <Avatar name={name || noun} src={avatarUri} size={92} ring palette={c} />

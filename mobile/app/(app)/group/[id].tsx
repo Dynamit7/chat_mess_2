@@ -38,7 +38,10 @@ const tempId = () => `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)
 const fileKind = (mime = '') =>
   mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
 
-type GMsg = Omit<GroupMsg, 'id'> & { id: number | string; status?: 'sending' | 'failed' };
+// `clientKey` is a stable React key that survives the optimistic→server-echo swap
+// (the id changes from a temp string to the real numeric id) so the row doesn't
+// unmount/remount and visibly flicker on send.
+type GMsg = Omit<GroupMsg, 'id'> & { id: number | string; status?: 'sending' | 'failed'; clientKey?: string };
 // One rendered row: the raw group message plus its precomputed Message mapping.
 type Row = { raw: GMsg; msg: Message };
 
@@ -107,7 +110,8 @@ export default function GroupConversation() {
         const ti = prev.findIndex((p) => p.status === 'sending' && p.text === m.text && Number(p.fromUserId) === me);
         if (ti >= 0) {
           const next = [...prev];
-          next[ti] = m;
+          // Preserve the optimistic row's stable key so it doesn't remount (flicker).
+          next[ti] = { ...m, clientKey: prev[ti].clientKey };
           return next;
         }
       }
@@ -261,7 +265,7 @@ export default function GroupConversation() {
     const tId = tempId();
     const r = replyTo;
     setMessages((prev) => [...prev, {
-      id: tId, groupId, fromUserId: me, userId: me, text, type: 'text', fileUrl: null, filename: null, replyToId: r ? Number(r.id) : null,
+      id: tId, clientKey: tId, groupId, fromUserId: me, userId: me, text, type: 'text', fileUrl: null, filename: null, replyToId: r ? Number(r.id) : null,
       isDeleted: false, isEdited: false, createdAt: new Date().toISOString(), sender: { id: me, username: user!.username }, readBy: [me],
       forwardedFromType: null, forwardedFromUsername: null,
       replyTo: r ? { id: Number(r.id), text: r.text || '', fromUserId: r.fromUserId } : null, status: 'sending',
@@ -497,7 +501,7 @@ export default function GroupConversation() {
           <Button label="Join group" onPress={join} loading={joining} style={{ marginTop: 18, minWidth: 200 }} palette={c} />
         </View>
       ) : (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <OfflineBanner />
           {loading ? (
             <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
@@ -508,7 +512,7 @@ export default function GroupConversation() {
               ref={listRef}
               data={rows}
               inverted
-              keyExtractor={(r) => String(r.raw.id)}
+              keyExtractor={(r) => String(r.raw.clientKey ?? r.raw.id)}
               contentContainerStyle={{ paddingVertical: 12 }}
               showsVerticalScrollIndicator={false}
               onScroll={onScroll}

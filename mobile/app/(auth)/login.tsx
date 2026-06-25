@@ -43,7 +43,7 @@ export default function Login() {
 
   return (
     <AuroraBackground palette={c}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 28 }]}
           keyboardShouldPersistTaps="handled"

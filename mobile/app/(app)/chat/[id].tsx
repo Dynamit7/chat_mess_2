@@ -528,7 +528,7 @@ export default function ConversationScreen() {
       <OfflineBanner />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={{ flex: 1 }}
       >
@@ -544,7 +544,7 @@ export default function ConversationScreen() {
             ref={listRef}
             data={data}
             inverted
-            keyExtractor={(m) => String(m.id)}
+            keyExtractor={(m) => String(m.tempId ?? m.id)}
             contentContainerStyle={{ paddingVertical: 12 }}
             showsVerticalScrollIndicator={false}
             onScroll={onScroll}

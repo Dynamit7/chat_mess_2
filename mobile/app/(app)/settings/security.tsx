@@ -79,7 +79,7 @@ function TwoFactorModal({ mode, me, onClose }: { mode: 'enable' | 'disable'; me:
   return (
     <Modal visible transparent animationType="slide" onRequestClose={() => onClose(false)} statusBarTranslucent>
       <Pressable style={s.backdrop} onPress={() => onClose(false)} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView behavior="padding">
         <View style={[s.sheet, { paddingBottom: insets.bottom + 14 }]}>
           <View style={s.sheetHandle} />
           <Text style={s.sheetTitle}>{mode === 'enable' ? t('security.enableTitle') : t('security.disableTitle')}</Text>
