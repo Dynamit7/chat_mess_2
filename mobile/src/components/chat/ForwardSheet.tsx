@@ -120,20 +120,46 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
 
   const payloads: ForwardPayload[] = messages && messages.length ? messages : message ? [message] : [];
 
+  // Humanise the per-destination error codes the backend returns.
+  const errLabel = (code: string) => {
+    switch (code) {
+      case 'blocked': return t('forward.errBlocked');
+      case 'not_member': return t('forward.errNotMember');
+      case 'channel_not_found': return t('common.notFound');
+      default: return code || t('story.tryAgain');
+    }
+  };
+
   const send = async () => {
     if (payloads.length === 0 || selected.length === 0) return;
     setSending(true);
     try {
       const destinations = selected.map((d) => ({ type: d.type, id: d.id }));
+      // The backend ALWAYS returns 200 with a per-destination `results` array — a
+      // failed delivery is `results[].error`, NOT an HTTP error. So inspect it:
+      // treating any 200 as success silently dropped failed forwards (looked like
+      // the button did nothing).
+      const failures: string[] = [];
       // Backend forwards one source message at a time → loop over the picked messages.
       for (const p of payloads) {
-        await messagesApi.forward({ userId, sourceMessage: p, destinations });
+        const res: any = await messagesApi.forward({ userId, sourceMessage: p, destinations });
+        for (const r of (res?.results || [])) {
+          if (r?.error) {
+            const name = selected.find((d) => d.type === r.dest?.type && d.id === r.dest?.id)?.name
+              || `${r.dest?.type} #${r.dest?.id}`;
+            failures.push(`${name}: ${errLabel(r.error)}`);
+          }
+        }
+      }
+      if (failures.length) {
+        // Keep the sheet open so the user can retry / pick another destination.
+        Alert.alert(t('forward.one'), failures.join('\n'));
+        return;
       }
       onSent?.();
       close();
     } catch (e: any) {
-      // Surface the real failure instead of silently doing nothing — otherwise a
-      // forward that the server rejected looks like the button simply didn't work.
+      // Network / HTTP error (e.g. 500) — surface it instead of failing silently.
       Alert.alert(t('forward.one'), e?.response?.data?.error || e?.response?.data?.message || t('story.tryAgain'));
     } finally {
       setSending(false);
