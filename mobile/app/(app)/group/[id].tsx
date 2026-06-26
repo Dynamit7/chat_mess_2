@@ -501,7 +501,7 @@ export default function GroupConversation() {
           <Button label="Join group" onPress={join} loading={joining} style={{ marginTop: 18, minWidth: 200 }} palette={c} />
         </View>
       ) : (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
           <OfflineBanner />
           {loading ? (
             <View style={styles.center}><ActivityIndicator color={c.accent} /></View>

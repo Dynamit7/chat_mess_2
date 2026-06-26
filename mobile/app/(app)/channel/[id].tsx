@@ -373,7 +373,7 @@ export default function ChannelFeed() {
       </View>
       )}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <OfflineBanner />
         {loading ? (
           <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
