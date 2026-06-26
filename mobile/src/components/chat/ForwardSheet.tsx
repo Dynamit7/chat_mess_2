@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Modal, View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, ActivityIndicator, Alert,
+  TextInput, ActivityIndicator, Alert, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { SlideInDown } from 'react-native-reanimated';
@@ -35,6 +35,7 @@ type Props = {
 
 export function ForwardSheet({ visible, message, messages, userId, onClose, onSent }: Props) {
   const insets = useSafeAreaInsets();
+  const { height: screenH } = useWindowDimensions();
   const { c } = useTheme();
   const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -262,7 +263,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
           <FlatList
             data={filtered}
             keyExtractor={(d) => `${d.type}_${d.id}`}
-            style={styles.list}
+            style={[styles.list, { maxHeight: screenH * 0.5 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item: d, index }) => {
@@ -390,7 +391,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     padding: 0,
   },
 
-  list: { flex: 1 },
+  // NOTE: no `flex: 1` here — the sheet is sized by content (maxHeight: '82%'),
+  // so a flex child would collapse to height 0 and the list would vanish. The
+  // FlatList grows with its content and caps via the inline maxHeight instead.
+  list: { flexGrow: 0 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 10,

@@ -27,6 +27,7 @@ import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { publishGroupLastMessage } from '@/lib/groupBus';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
 import { useTheme } from '@/theme/ThemeContext';
@@ -63,6 +64,7 @@ export default function GroupConversation() {
 
   const [messages, setMessages] = useState<GMsg[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const cursorRef = useRef<number | null>(null); // id of the oldest loaded message
@@ -179,6 +181,7 @@ export default function GroupConversation() {
         if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
         return;
       }
+      if (alive) setBgRefreshing(true);
       try {
         const { buffer, hasMore: more, nextBefore } = await groupsApi.messagesRawPage(groupId, me, PAGE_SIZE);
         if (!alive) return;
@@ -191,6 +194,8 @@ export default function GroupConversation() {
         cacheSet(key, list.slice(-50));
       } catch {
         if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
+      } finally {
+        if (alive) setBgRefreshing(false);
       }
     })();
     groupsApi.members(groupId).then((m) => alive && setMembers(m || [])).catch(() => {});
@@ -516,6 +521,7 @@ export default function GroupConversation() {
       ) : (
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
           <OfflineBanner />
+          {bgRefreshing && !loading ? <TopProgressBar palette={c} /> : null}
           {loading ? (
             <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
           ) : visible.length === 0 ? (

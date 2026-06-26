@@ -21,6 +21,7 @@ import { channelsApi } from '@/lib/api';
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
 import { useTheme } from '@/theme/ThemeContext';
@@ -53,6 +54,7 @@ export default function ChannelFeed() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [reactions, setReactions] = useState<RMap>({});
   const [loading, setLoading] = useState(true);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const cursorRef = useRef<number | null>(null); // id of the oldest loaded post
@@ -150,6 +152,7 @@ export default function ChannelFeed() {
         if (alive) { setHasMore(false); setLoading(false); }
         return;
       }
+      if (alive) setBgRefreshing(true);
       try {
         const page = await channelsApi.messagesPage(channelId, PAGE_SIZE);
         if (!alive) return;
@@ -162,6 +165,8 @@ export default function ChannelFeed() {
         loadReactions(arr, () => alive);
       } catch {
         if (alive) { setHasMore(false); setLoading(false); }
+      } finally {
+        if (alive) setBgRefreshing(false);
       }
     })();
     channelsApi.updateLastSeen(channelId, me).catch(() => {});
@@ -376,6 +381,7 @@ export default function ChannelFeed() {
 
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <OfflineBanner />
+        {bgRefreshing && !loading ? <TopProgressBar palette={c} /> : null}
         {loading ? (
           <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
         ) : posts.length === 0 ? (

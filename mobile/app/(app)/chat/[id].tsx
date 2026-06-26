@@ -29,6 +29,7 @@ const PAGE_SIZE = 40;
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
 import { useCall } from '@/state/call';
@@ -58,6 +59,7 @@ export default function ConversationScreen() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const cursorRef = useRef<number | null>(null); // id of the oldest loaded message
@@ -179,6 +181,7 @@ export default function ConversationScreen() {
         if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
         return;
       }
+      if (alive) setBgRefreshing(true);
       try {
         const page = await messagesApi.getMessagesPage(me, partnerId, PAGE_SIZE);
         if (!alive) return;
@@ -191,6 +194,8 @@ export default function ConversationScreen() {
         cacheSet(key, list.slice(-50)); // keep most recent messages for offline
       } catch {
         if (alive) { setHasMore(false); setLoading(false); scrollToEnd(false); }
+      } finally {
+        if (alive) setBgRefreshing(false);
       }
     })();
 
@@ -527,6 +532,7 @@ export default function ConversationScreen() {
       )}
 
       <OfflineBanner />
+      {bgRefreshing && !loading ? <TopProgressBar palette={c} /> : null}
 
       <KeyboardAvoidingView
         behavior="padding"

@@ -1170,8 +1170,12 @@ router.post("/forward", async (req, res) => {
             req.io.to(`group_${groupId}`).emit("groupMessageReceived", buffer);
           }
 
+          // Notify EVERY member's groups list (including the sender — the client
+          // ignores the unread bump for senderId===me but still needs the
+          // lastMessage update). Mirror the full payload the normal send path
+          // emits, otherwise the row's preview gets wiped to blank/"text".
           const groupMembers = await GroupUser.findAll({
-            where: { groupId, userId: { [Op.ne]: userId } },
+            where: { groupId },
             attributes: ["userId"],
           });
           groupMembers.forEach((member) => {
@@ -1179,6 +1183,13 @@ router.post("/forward", async (req, res) => {
               groupId,
               senderId: userId,
               messageId: newMessage.id,
+              lastMessage: gText || "",
+              lastMessageType: gType || "text",
+              lastMessageSender: sender?.username || "",
+              lastMessageTime: newMessage.createdAt
+                ? new Date(newMessage.createdAt).toISOString()
+                : "",
+              lastMessageIsForwarded: true,
             });
           });
 

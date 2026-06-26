@@ -18,6 +18,7 @@ import { channelsApi } from '@/lib/api';
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { useAuth } from '@/state/auth';
 import { useSocket } from '@/state/socket';
 import { useT } from '@/i18n';
@@ -42,6 +43,7 @@ export default function ChannelsScreen() {
   const [items, setItems] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const prefKey = Number.isFinite(me) && me > 0 ? `prefs.${me}` : null;
   const [muted, toggleMute] = usePersistentIdSet(prefKey && `${prefKey}.channels.muted`);
   const [pinned, togglePin] = usePersistentIdSet(prefKey && `${prefKey}.channels.pinned`);
@@ -83,7 +85,7 @@ export default function ChannelsScreen() {
     const key = cacheKeys.channels(me);
     // Never clobber data already on screen (e.g. a fresh network result that
     // arrived before this cache read resolved).
-    const showCached = async () => { const c = await cacheGet<Entity[]>(key); if (c?.length) setItems((prev) => (prev.length ? prev : c)); };
+    const showCached = async () => { const c = await cacheGet<Entity[]>(key); if (c?.length) { setItems((prev) => (prev.length ? prev : c)); setLoading(false); } };
     // Paint instantly from cache when the screen has nothing yet (cold start /
     // first visit) so switching to this tab never shows a blank spinner.
     // Fire-and-forget: must NOT block the network path (SQLite is unavailable on
@@ -95,6 +97,7 @@ export default function ChannelsScreen() {
       return;
     }
     if (!(await getIsOnline())) { await showCached(); setLoading(false); setRefreshing(false); return; }
+    setBgRefreshing(true);
     try {
       const [channels, unread] = await Promise.all([channelsApi.list(me), channelsApi.unreadCounts(me).catch(() => [])]);
       const map = new Map((unread || []).map((u: any) => [Number(u.channelId), u.unreadCount]));
@@ -108,6 +111,7 @@ export default function ChannelsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setBgRefreshing(false);
     }
   }, [me]);
 
@@ -283,6 +287,7 @@ export default function ChannelsScreen() {
       )}
 
       <OfflineBanner />
+      {bgRefreshing && !loading && !refreshing && !isSearchMode ? <TopProgressBar palette={c} /> : null}
 
       {loading && !showSearch ? (
         <View style={styles.center}><ActivityIndicator color={c.accent} /></View>

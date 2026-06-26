@@ -20,6 +20,7 @@ import { messagesApi, ChatSummary } from '@/lib/api';
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { useAuth } from '@/state/auth';
 import { useT } from '@/i18n';
 import { useTheme } from '@/theme/ThemeContext';
@@ -44,6 +45,7 @@ export default function ChatsScreen() {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<number>>(() => new Set());
   const prefKey = Number.isFinite(me) && me > 0 ? `prefs.${me}` : null;
   const [muted, toggleMute] = usePersistentIdSet(prefKey && `${prefKey}.chats.muted`);
@@ -90,6 +92,9 @@ export default function ChatsScreen() {
       // arrived before this cache read resolved).
       setChats((prev) => (prev.length ? prev : cached));
       setOnlineIds((prev) => (prev.size ? prev : new Set()));
+      // Reveal the cached list immediately — the network refresh now happens
+      // behind a thin top bar instead of a blocking full-screen spinner.
+      setLoading(false);
     };
     // Paint instantly from cache when the screen has nothing yet, so a cold start
     // (or first visit to the tab) never shows a blank spinner — Telegram-style.
@@ -108,6 +113,8 @@ export default function ChatsScreen() {
       setLoading(false); setRefreshing(false);
       return;
     }
+    // Background refresh indicator (thin top bar) while data is already on screen.
+    setBgRefreshing(true);
     try {
       const data = await messagesApi.getChats(me);
       const list = Array.isArray(data) ? data : [];
@@ -118,7 +125,7 @@ export default function ChatsScreen() {
       lastLoadRef.current = Date.now();
     } catch {
       await showCached();
-    } finally { setLoading(false); setRefreshing(false); }
+    } finally { setLoading(false); setRefreshing(false); setBgRefreshing(false); }
   }, [me]);
 
   // Reconcile with the server when the tab regains focus (throttled inside load),
@@ -322,6 +329,7 @@ export default function ChatsScreen() {
         renderHeader()
       )}
       <OfflineBanner />
+      {bgRefreshing && !loading && !refreshing ? <TopProgressBar palette={c} /> : null}
       {loading ? (
         <View style={styles.center}><ActivityIndicator color={c.accent} /></View>
       ) : (

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Modal, View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, ActivityIndicator,
+  TextInput, ActivityIndicator, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { SlideInDown } from 'react-native-reanimated';
@@ -28,6 +28,7 @@ type Props = {
 
 export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose, onPick }: Props) {
   const insets = useSafeAreaInsets();
+  const { height: screenH } = useWindowDimensions();
   const { c } = useTheme();
   const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -127,7 +128,7 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
           <FlatList
             data={visibleResults}
             keyExtractor={(u) => String(u.id)}
-            style={styles.list}
+            style={[styles.list, { maxHeight: screenH * 0.5 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item: u }) => {
@@ -189,7 +190,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderWidth: 1, borderColor: c.stroke,
   },
   searchInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 15, padding: 0 },
-  list: { flex: 1 },
+  // No `flex: 1`: the sheet is content-sized (maxHeight: '82%'), so a flex child
+  // would collapse to height 0 and the results would be invisible/untappable.
+  list: { flexGrow: 0 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 10,
