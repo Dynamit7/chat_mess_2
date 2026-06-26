@@ -441,8 +441,10 @@ router.post("/:groupId/message", uploadLarge.single("file"), async (req, res) =>
     const buffer = chat.GroupMessage.encode(protoMessage).finish();
     req.io.to(`group_${groupId}`).emit("groupMessageReceived", buffer);
 
+    // Include the sender too — their own groups-list needs the lastMessage
+    // update in realtime (the client ignores the unread bump for senderId===me).
     const groupMembers = await GroupUser.findAll({
-      where: { groupId, userId: { [Op.ne]: userIdNum } },
+      where: { groupId },
       attributes: ["userId"],
     });
     const memberIds = groupMembers.map((member) => member.userId);

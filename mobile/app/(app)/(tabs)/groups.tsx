@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useSelection } from '@/lib/useSelection';
 import { usePersistentIdSet } from '@/lib/usePersistentIdSet';
 import { getDraftsFor, subscribeDrafts } from '@/lib/drafts';
+import { subscribeGroupLastMessage } from '@/lib/groupBus';
 import { groupsApi } from '@/lib/api';
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
 import { getIsOnline } from '@/lib/net';
@@ -70,6 +71,11 @@ export default function GroupsScreen() {
       return toTop ? [updated, ...rest] : [...rest.slice(0, idx), updated, ...rest.slice(idx)];
     });
   }, []);
+
+  // Local bus: the group chat publishes a lastMessage update the instant YOU send,
+  // so this list refreshes immediately even though the server historically didn't
+  // echo newGroupMessage back to the sender.
+  useEffect(() => subscribeGroupLastMessage((gid, patch) => merge(gid, patch)), [merge]);
 
   // Mirror current items + last successful network refresh into refs so `load`
   // can stay referentially stable (deps: [me]) while still reading live values.

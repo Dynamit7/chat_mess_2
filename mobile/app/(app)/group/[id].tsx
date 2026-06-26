@@ -24,6 +24,7 @@ import { useSelection } from '@/lib/useSelection';
 import { groupsApi, Message, ForwardPayload } from '@/lib/api';
 import { decodeGroupMessageList, decodeGroupMessage, isBinary, GroupMsg } from '@/lib/groupProto';
 import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
+import { publishGroupLastMessage } from '@/lib/groupBus';
 import { getIsOnline } from '@/lib/net';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useAuth } from '@/state/auth';
@@ -273,6 +274,12 @@ export default function GroupConversation() {
     }]);
     setReplyTo(null);
     scrollToEnd();
+    // Update the Groups tab's lastMessage instantly (the server doesn't always
+    // echo newGroupMessage back to the sender).
+    publishGroupLastMessage(groupId, {
+      lastMessage: text, lastMessageType: 'text', lastMessageSender: user?.username,
+      lastMessageTime: new Date().toISOString(), lastMessageIsForwarded: false,
+    });
     try {
       await groupsApi.sendMessage(groupId, { userId: me, text, replyToId: r ? Number(r.id) : undefined });
     } catch {
@@ -281,8 +288,13 @@ export default function GroupConversation() {
   };
 
   const sendAsset = async (asset: { uri: string; name?: string; mime?: string }) => {
+    const kind = fileKind(asset.mime || '');
+    publishGroupLastMessage(groupId, {
+      lastMessage: '', lastMessageType: kind, lastMessageSender: user?.username,
+      lastMessageTime: new Date().toISOString(), lastMessageIsForwarded: false,
+    });
     try {
-      await groupsApi.sendMessage(groupId, { userId: me, text: '', file: { uri: asset.uri, name: asset.name, type: asset.mime }, messageType: fileKind(asset.mime || '') });
+      await groupsApi.sendMessage(groupId, { userId: me, text: '', file: { uri: asset.uri, name: asset.name, type: asset.mime }, messageType: kind });
     } catch {
       Alert.alert('Upload failed', 'Could not send that file.');
     }
