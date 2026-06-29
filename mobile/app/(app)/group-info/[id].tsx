@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -8,8 +8,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { AddMembersSheet, PickUser } from '@/components/social/AddMembersSheet';
 import { groupsApi } from '@/lib/api';
+import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
+import { getIsOnline } from '@/lib/net';
 import { useAuth } from '@/state/auth';
 import { useTheme } from '@/theme/ThemeContext';
 import { useT } from '@/i18n';
@@ -30,21 +33,44 @@ export default function GroupInfoScreen() {
 
   const [group, setGroup] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [adding, setAdding] = useState(false);
 
+  const lastLoadRef = useRef(0);
+  const REFRESH_THROTTLE_MS = 30_000;
+
   useFocusEffect(
     useCallback(() => {
-      Promise.all([
-        groupsApi.getById(groupId).catch(() => null),
-        groupsApi.members(groupId).catch(() => []),
-      ])
-        .then(([g, m]) => {
-          setGroup(g);
-          setMembers(Array.isArray(m) ? m : []);
-        })
-        .finally(() => setLoading(false));
+      let alive = true;
+      // Paint instantly from cache (params already give name+avatar) so the
+      // screen never opens on a blank spinner — Telegram-style.
+      cacheGet<{ group: any; members: any[] }>(cacheKeys.groupInfo(groupId)).then((cached) => {
+        if (!alive || !cached) return;
+        setGroup((prev: any) => prev ?? cached.group);
+        setMembers((prev) => (prev.length ? prev : cached.members ?? []));
+      });
+      // Throttle: skip the network hit if we refreshed very recently.
+      if (Date.now() - lastLoadRef.current < REFRESH_THROTTLE_MS && group) return;
+      (async () => {
+        if (!(await getIsOnline())) return;
+        setBgRefreshing(true);
+        try {
+          const [g, m] = await Promise.all([
+            groupsApi.getById(groupId).catch(() => null),
+            groupsApi.members(groupId).catch(() => []),
+          ]);
+          if (!alive) return;
+          const list = Array.isArray(m) ? m : [];
+          if (g) setGroup(g);
+          setMembers(list);
+          cacheSet(cacheKeys.groupInfo(groupId), { group: g, members: list.slice(0, 30) });
+          lastLoadRef.current = Date.now();
+        } finally {
+          if (alive) setBgRefreshing(false);
+        }
+      })();
+      return () => { alive = false; };
     }, [groupId])
   );
 
@@ -108,13 +134,11 @@ export default function GroupInfoScreen() {
         )}
       </View>
 
-      {loading ? (
-        <View style={styles.center}><ActivityIndicator color={c.accent} size="large" /></View>
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-        >
+      {bgRefreshing ? <TopProgressBar palette={c} /> : null}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      >
           {/* Hero */}
           <View style={styles.hero}>
             <Avatar name={name} src={avatar} size={100} ring palette={c} />
@@ -186,8 +210,7 @@ export default function GroupInfoScreen() {
               </GlassCard>
             </>
           )}
-        </ScrollView>
-      )}
+      </ScrollView>
 
       <AddMembersSheet
         visible={adding}

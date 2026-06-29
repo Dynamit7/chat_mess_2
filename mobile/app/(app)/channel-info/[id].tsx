@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -8,8 +8,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { AddMembersSheet, PickUser } from '@/components/social/AddMembersSheet';
 import { channelsApi } from '@/lib/api';
+import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
+import { getIsOnline } from '@/lib/net';
 import { useAuth } from '@/state/auth';
 import { useTheme } from '@/theme/ThemeContext';
 import { useT } from '@/i18n';
@@ -30,7 +33,7 @@ export default function ChannelInfoScreen() {
 
   const [channel, setChannel] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ id: number; name: string } | null>(null);
@@ -44,20 +47,44 @@ export default function ChannelInfoScreen() {
     }
   };
 
+  const lastLoadRef = useRef(0);
+  const REFRESH_THROTTLE_MS = 30_000;
+
   useFocusEffect(
     useCallback(() => {
       if (!isReady || !myId) return;
-      channelsApi.getById(channelId)
-        .then((c) => {
-          setChannel(c);
-          if (Number(c?.ownerId) === myId) {
-            return channelsApi.members(channelId, myId).catch(() => []);
-          }
-          return [];
-        })
-        .then((m) => setMembers(Array.isArray(m) ? m : []))
-        .catch(() => {})
-        .finally(() => setLoading(false));
+      let alive = true;
+      // Paint instantly from cache (params already give name+avatar) so the
+      // screen never opens on a blank spinner — Telegram-style.
+      cacheGet<{ channel: any; members: any[] }>(cacheKeys.channelInfo(channelId)).then((cached) => {
+        if (!alive || !cached) return;
+        setChannel((prev: any) => prev ?? cached.channel);
+        setMembers((prev) => (prev.length ? prev : cached.members ?? []));
+      });
+      // Throttle: skip the network hit if we refreshed very recently.
+      if (Date.now() - lastLoadRef.current < REFRESH_THROTTLE_MS && channel) return;
+      (async () => {
+        if (!(await getIsOnline())) return;
+        setBgRefreshing(true);
+        try {
+          const ch = await channelsApi.getById(channelId);
+          if (!alive) return;
+          setChannel(ch);
+          const list = Number(ch?.ownerId) === myId
+            ? await channelsApi.members(channelId, myId).catch(() => [])
+            : [];
+          if (!alive) return;
+          const arr = Array.isArray(list) ? list : [];
+          setMembers(arr);
+          cacheSet(cacheKeys.channelInfo(channelId), { channel: ch, members: arr.slice(0, 30) });
+          lastLoadRef.current = Date.now();
+        } catch {
+          /* keep cached/param data on screen */
+        } finally {
+          if (alive) setBgRefreshing(false);
+        }
+      })();
+      return () => { alive = false; };
     }, [channelId, isReady, myId])
   );
 
@@ -149,13 +176,11 @@ export default function ChannelInfoScreen() {
         )}
       </View>
 
-      {loading ? (
-        <View style={styles.center}><ActivityIndicator color={c.accent} size="large" /></View>
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-        >
+      {bgRefreshing ? <TopProgressBar palette={c} /> : null}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      >
           {/* Hero */}
           <View style={styles.hero}>
             <Avatar name={name} src={avatar} size={100} ring palette={c} />
@@ -240,8 +265,7 @@ export default function ChannelInfoScreen() {
               </GlassCard>
             </>
           )}
-        </ScrollView>
-      )}
+      </ScrollView>
 
       <AddMembersSheet
         visible={adding}

@@ -59,4 +59,11 @@ export const cacheKeys = {
   directMessages: (chatKey: string) => `messages:direct:${chatKey}`,
   groupMessages: (groupId: number) => `messages:group:${groupId}`,
   channelMessages: (channelId: number) => `messages:channel:${channelId}`,
+  // Single-entity profile/info screens — cached so opening a profile paints
+  // instantly and the network refresh happens behind a thin top bar.
+  userProfile: (userId: number) => `profile:user:${userId}`,
+  groupInfo: (groupId: number) => `info:group:${groupId}`,
+  groupMembers: (groupId: number) => `members:group:${groupId}`,
+  channelInfo: (channelId: number) => `info:channel:${channelId}`,
+  channelMembers: (channelId: number) => `members:channel:${channelId}`,
 };

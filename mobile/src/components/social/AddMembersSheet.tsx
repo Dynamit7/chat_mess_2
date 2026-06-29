@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { SlideInDown } from 'react-native-reanimated';
+import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
 import { usersApi } from '@/lib/api';
@@ -88,7 +89,15 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      {/* A RN core Modal renders in its own Android window, so the root
+          KeyboardProvider doesn't reach it. Since the app runs keyboard-controller
+          in global (adjustNothing) mode, an un-wrapped Modal leaves its TextInput
+          unable to take input / shows no keyboard. Nest a provider here (the
+          documented fix) and lift the sheet above the keyboard so results stay
+          visible. */}
+      <KeyboardProvider>
       <Pressable style={styles.backdrop} onPress={onClose} />
+      <KeyboardAvoidingView behavior="padding" pointerEvents="box-none">
       <Animated.View entering={SlideInDown.duration(220)} style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.handle} />
         <View style={styles.header}>
@@ -161,6 +170,8 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
           />
         )}
       </Animated.View>
+      </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }

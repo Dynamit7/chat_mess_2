@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal, Alert } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState, useCallback, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert } from 'react-native';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -9,7 +9,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import { usersApi } from '@/lib/api';
+import { cacheGet, cacheSet, cacheKeys } from '@/lib/offlineCache';
+import { getIsOnline } from '@/lib/net';
 import { fixFileUrl } from '@/lib/config';
 import { useAuth } from '@/state/auth';
 import { useCall } from '@/state/call';
@@ -33,21 +36,46 @@ export default function UserProfileScreen() {
 
   const [profile, setProfile] = useState<any>(null);
   const [online, setOnline] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [bgRefreshing, setBgRefreshing] = useState(false);
   const [viewer, setViewer] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
-      usersApi.getById(userId),
-      usersApi.online(userId).catch(() => ({ isOnline: false })),
-    ])
-      .then(([p, o]) => {
-        setProfile(p);
-        setOnline(o?.isOnline ?? false);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [userId]);
+  // Avoid refetching on every focus when we just loaded — Telegram-style.
+  const lastLoadRef = useRef(0);
+  const REFRESH_THROTTLE_MS = 30_000;
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      // 1) Paint instantly from cache so the profile never opens on a blank
+      //    spinner (params already give us name+avatar; cache fills the rest).
+      cacheGet<any>(cacheKeys.userProfile(userId)).then((cached) => {
+        if (alive && cached) setProfile((prev: any) => prev ?? cached);
+      });
+      // 2) Offline → stop here, the cached/param data stays on screen.
+      // 3) Throttle: skip the network hit if we refreshed very recently.
+      if (Date.now() - lastLoadRef.current < REFRESH_THROTTLE_MS && profile) return;
+      (async () => {
+        if (!(await getIsOnline())) return;
+        setBgRefreshing(true);
+        try {
+          const [p, o] = await Promise.all([
+            usersApi.getById(userId),
+            usersApi.online(userId).catch(() => ({ isOnline: false })),
+          ]);
+          if (!alive) return;
+          setProfile(p);
+          setOnline(o?.isOnline ?? false);
+          cacheSet(cacheKeys.userProfile(userId), p);
+          lastLoadRef.current = Date.now();
+        } catch {
+          /* keep cached/param data on screen */
+        } finally {
+          if (alive) setBgRefreshing(false);
+        }
+      })();
+      return () => { alive = false; };
+    }, [userId])
+  );
 
   const name = profile?.username || profile?.nickname || params.name || 'User';
   const avatar = profile?.avatar || profile?.picture || params.avatar || undefined;
@@ -76,13 +104,11 @@ export default function UserProfileScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {loading ? (
-        <View style={styles.center}><ActivityIndicator color={c.accent} size="large" /></View>
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-        >
+      {bgRefreshing ? <TopProgressBar palette={c} /> : null}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      >
           {/* Hero */}
           <View style={styles.hero}>
             {/* Tap the avatar to view the photo fullscreen (Telegram-style). */}
@@ -112,8 +138,7 @@ export default function UserProfileScreen() {
           <GlassCard padded={false} palette={c}>
             <InfoRow icon="person-outline" label={t('profile.username')} value={`@${name}`} last styles={styles} c={c} />
           </GlassCard>
-        </ScrollView>
-      )}
+      </ScrollView>
 
       {/* Fullscreen avatar viewer */}
       <Modal visible={viewer} transparent animationType="fade" onRequestClose={() => setViewer(false)} statusBarTranslucent>
