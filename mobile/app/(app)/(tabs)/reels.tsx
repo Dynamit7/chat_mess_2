@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
-  Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, RefreshControl,
+  Alert, Modal, TextInput, ScrollView, RefreshControl,
 } from 'react-native';
+import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -522,10 +523,13 @@ function CreatePost({ me, username, avatar, onClose, onCreated, styles, c }: {
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      {/* Nested KeyboardProvider so the input works inside this RN Modal under
+          keyboard-controller's global mode. */}
+      <KeyboardProvider>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
       </Pressable>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView behavior="padding">
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHead}>
@@ -573,6 +577,7 @@ function CreatePost({ me, username, avatar, onClose, onCreated, styles, c }: {
           </View>
         </View>
       </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }
@@ -632,10 +637,13 @@ function ReelComments({ reel, me, onClose, onAdded, onRemoved, styles, c }: { re
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      {/* Nested KeyboardProvider so the comment input works inside this RN Modal
+          under keyboard-controller's global mode. */}
+      <KeyboardProvider>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
       </Pressable>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView behavior="padding">
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { alignSelf: 'center', marginBottom: 12 }]}>{t('feed.comments')}</Text>
@@ -689,6 +697,7 @@ function ReelComments({ reel, me, onClose, onAdded, onRemoved, styles, c }: { re
           </View>
         </View>
       </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }

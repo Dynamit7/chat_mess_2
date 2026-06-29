@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet,
 } from 'react-native';
+import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, font, radius, Palette } from '@/theme/theme';
@@ -78,6 +79,10 @@ export function PhoneInput({
       </View>
 
       <Modal visible={picker} transparent animationType="slide" onRequestClose={() => setPicker(false)} statusBarTranslucent>
+        {/* Nested KeyboardProvider so the search field works inside this RN Modal
+            under keyboard-controller's global mode. */}
+        <KeyboardProvider>
+        <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
         <Pressable style={styles.backdrop} onPress={() => setPicker(false)} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
           <View style={styles.handle} />
@@ -109,6 +114,7 @@ export function PhoneInput({
           <FlatList
             data={filtered}
             keyExtractor={(item) => item.iso2}
+            style={{ flex: 1 }}
             keyboardShouldPersistTaps="handled"
             initialNumToRender={20}
             renderItem={({ item }) => {
@@ -124,6 +130,8 @@ export function PhoneInput({
             }}
           />
         </View>
+        </KeyboardAvoidingView>
+        </KeyboardProvider>
       </Modal>
     </View>
   );
@@ -150,12 +158,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   divider: { width: 1, height: 26, backgroundColor: c.stroke2 },
   input: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 16, paddingLeft: 12, paddingVertical: 0 },
 
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  avoider: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   sheet: {
     backgroundColor: c.bg2,
     borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderWidth: 1, borderColor: c.stroke,
     maxHeight: '82%',
+    minHeight: '50%',
   },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.stroke2, marginTop: 10, marginBottom: 2 },
   sheetHeader: {

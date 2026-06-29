@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Modal, View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, ActivityIndicator, Alert, useWindowDimensions,
+  TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { SlideInDown } from 'react-native-reanimated';
+import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
@@ -35,7 +36,6 @@ type Props = {
 
 export function ForwardSheet({ visible, message, messages, userId, onClose, onSent }: Props) {
   const insets = useSafeAreaInsets();
-  const { height: screenH } = useWindowDimensions();
   const { c } = useTheme();
   const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -190,6 +190,11 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
       onRequestClose={close}
       statusBarTranslucent
     >
+      {/* Nested KeyboardProvider: a RN core Modal is a separate Android window
+          the root provider doesn't reach, so without this the TextInput can't
+          take input under keyboard-controller's global mode. */}
+      <KeyboardProvider>
+      <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
       <Pressable style={styles.backdrop} onPress={close} />
 
       <Animated.View entering={SlideInDown.duration(220)} style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
@@ -263,7 +268,7 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
           <FlatList
             data={filtered}
             keyExtractor={(d) => `${d.type}_${d.id}`}
-            style={[styles.list, { maxHeight: screenH * 0.5 }]}
+            style={styles.list}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item: d, index }) => {
@@ -327,12 +332,15 @@ export function ForwardSheet({ visible, message, messages, userId, onClose, onSe
           </View>
         )}
       </Animated.View>
+      </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  avoider: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
 
   sheet: {
     backgroundColor: c.bg2 ?? '#12102A',
@@ -341,6 +349,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderWidth: 1,
     borderColor: c.stroke,
     maxHeight: '82%',
+    minHeight: '46%',
   },
   handle: {
     alignSelf: 'center',
@@ -391,10 +400,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     padding: 0,
   },
 
-  // NOTE: no `flex: 1` here — the sheet is sized by content (maxHeight: '82%'),
-  // so a flex child would collapse to height 0 and the list would vanish. The
-  // FlatList grows with its content and caps via the inline maxHeight instead.
-  list: { flexGrow: 0 },
+  // The sheet has a bounded height (minHeight..maxHeight), so the list can flex
+  // to fill it and scroll.
+  list: { flex: 1 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 10,

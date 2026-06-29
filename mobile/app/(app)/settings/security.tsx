@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, Modal, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, Modal, Pressable, TextInput, Platform, StyleSheet } from 'react-native';
+import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -78,8 +79,11 @@ function TwoFactorModal({ mode, me, onClose }: { mode: 'enable' | 'disable'; me:
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={() => onClose(false)} statusBarTranslucent>
-      <Pressable style={s.backdrop} onPress={() => onClose(false)} />
-      <KeyboardAvoidingView behavior="padding">
+      {/* Nested KeyboardProvider so the password fields work inside this RN Modal
+          under keyboard-controller's global mode. */}
+      <KeyboardProvider>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Pressable style={[s.backdrop, { ...StyleSheet.absoluteFillObject }]} onPress={() => onClose(false)} />
         <View style={[s.sheet, { paddingBottom: insets.bottom + 14 }]}>
           <View style={s.sheetHandle} />
           <Text style={s.sheetTitle}>{mode === 'enable' ? t('security.enableTitle') : t('security.disableTitle')}</Text>
@@ -92,6 +96,7 @@ function TwoFactorModal({ mode, me, onClose }: { mode: 'enable' | 'disable'; me:
           <Button label={mode === 'enable' ? t('security.enable') : t('security.disable')} onPress={submit} loading={loading} style={{ marginTop: 12 }} palette={c} />
         </View>
       </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }

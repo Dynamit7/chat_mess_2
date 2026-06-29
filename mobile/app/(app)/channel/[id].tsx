@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Platform,
   TextInput, Alert, Modal,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -521,6 +521,10 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      {/* Nested KeyboardProvider + avoider so the comment input works inside this
+          RN Modal under keyboard-controller's global mode and lifts above the keyboard. */}
+      <KeyboardProvider>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'flex-end' }}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose} />
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
         <View style={styles.sheetHandle} />
@@ -546,6 +550,8 @@ function CommentsModal({ channelId, post, canManage, me, onClose, onAdded }: { c
           </Pressable>
         </View>
       </View>
+      </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }
