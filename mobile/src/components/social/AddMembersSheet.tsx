@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Modal, View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, ActivityIndicator, useWindowDimensions,
+  TextInput, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { SlideInDown } from 'react-native-reanimated';
@@ -29,7 +29,6 @@ type Props = {
 
 export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose, onPick }: Props) {
   const insets = useSafeAreaInsets();
-  const { height: screenH } = useWindowDimensions();
   const { c } = useTheme();
   const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -96,8 +95,11 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
           documented fix) and lift the sheet above the keyboard so results stay
           visible. */}
       <KeyboardProvider>
+      <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
+      {/* Full-screen dimmer behind the sheet — must cover the WHOLE screen
+          (not just the area above the sheet), otherwise the screen underneath
+          shows through crisply next to a short sheet. */}
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <KeyboardAvoidingView behavior="padding" pointerEvents="box-none">
       <Animated.View entering={SlideInDown.duration(220)} style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.handle} />
         <View style={styles.header}>
@@ -137,7 +139,7 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
           <FlatList
             data={visibleResults}
             keyExtractor={(u) => String(u.id)}
-            style={[styles.list, { maxHeight: screenH * 0.5 }]}
+            style={styles.list}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item: u }) => {
@@ -177,12 +179,16 @@ export function AddMembersSheet({ visible, myId, title, excludeIds = [], onClose
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  // Fills the whole modal and pins the sheet to the bottom; lifts it above the
+  // keyboard via behavior="padding".
+  avoider: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   sheet: {
     backgroundColor: c.bg2 ?? '#12102A',
     borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderWidth: 1, borderColor: c.stroke,
     maxHeight: '82%',
+    minHeight: '46%',
   },
   handle: {
     alignSelf: 'center', width: 40, height: 4, borderRadius: 2,
@@ -201,9 +207,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderWidth: 1, borderColor: c.stroke,
   },
   searchInput: { flex: 1, color: c.text, fontFamily: font.body, fontSize: 15, padding: 0 },
-  // No `flex: 1`: the sheet is content-sized (maxHeight: '82%'), so a flex child
-  // would collapse to height 0 and the results would be invisible/untappable.
-  list: { flexGrow: 0 },
+  // The sheet now has a bounded height (minHeight..maxHeight), so the body can
+  // safely flex to fill it — the list scrolls and the empty state centres.
+  list: { flex: 1 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 10,
@@ -211,6 +217,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   rowName: { color: c.text, fontFamily: font.bodyMed, fontSize: 15 },
   rowSub: { color: c.textFaint, fontFamily: font.body, fontSize: 12, marginTop: 1 },
-  center: { height: 220, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  center: { flex: 1, minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 10 },
   empty: { color: c.textFaint, fontFamily: font.body, fontSize: 14 },
 });

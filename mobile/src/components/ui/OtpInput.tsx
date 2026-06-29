@@ -20,8 +20,18 @@ export function OtpInput({ value, onChange, length = 6, onComplete, palette = co
     if (digits.length === length) onComplete?.(digits);
   };
 
+  // On Android, dismissing the keyboard (back button / swipe) does NOT blur the
+  // field, so React still thinks it's focused and a plain focus() is a no-op —
+  // the keyboard never comes back. Blur first, then focus to force it up again.
+  const focusInput = () => {
+    const input = ref.current;
+    if (!input) return;
+    input.blur();
+    setTimeout(() => input.focus(), 50);
+  };
+
   return (
-    <Pressable style={styles.row} onPress={() => ref.current?.focus()}>
+    <Pressable style={styles.row} onPress={focusInput}>
       {Array.from({ length }).map((_, i) => {
         const active = focused && i === Math.min(value.length, length - 1) && value.length < length;
         const filled = i < value.length;
