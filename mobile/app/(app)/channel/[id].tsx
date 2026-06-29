@@ -347,6 +347,10 @@ export default function ChannelFeed() {
   };
 
   return (
+    // Native-stack screens are separate native containers, so the root
+    // KeyboardProvider doesn't reliably feed keyboard events here — wrap the
+    // screen in its own provider so the composer's KeyboardAvoidingView lifts.
+    <KeyboardProvider>
     <AuroraBackground palette={c}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {sel.active ? (
@@ -444,6 +448,7 @@ export default function ChannelFeed() {
         </Pressable>
       </Modal>
     </AuroraBackground>
+    </KeyboardProvider>
   );
 }
 

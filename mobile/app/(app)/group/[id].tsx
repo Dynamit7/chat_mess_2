@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Platform, Alert, Modal } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -149,6 +149,24 @@ export default function GroupConversation() {
     }
   }, [hasMore, groupId, me]);
 
+  // params.isMember is only an optimistic hint from the list, so re-opening a
+  // group you've already joined could wrongly show the "Join" screen. Reconcile
+  // real membership with the server on open: if you're in the member list, flip
+  // to member (which triggers the history load below).
+  useEffect(() => {
+    if (!Number.isFinite(me)) return;
+    let alive = true;
+    groupsApi.members(groupId)
+      .then((m) => {
+        if (!alive) return;
+        const list = Array.isArray(m) ? m : [];
+        setMembers(list);
+        if (list.some((u: any) => Number(u.userId ?? u.id) === me)) setMember(true);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [groupId, me]);
+
   // Load history + join room
   useEffect(() => {
     if (!member) { setLoading(false); return; }
@@ -198,7 +216,6 @@ export default function GroupConversation() {
         if (alive) setBgRefreshing(false);
       }
     })();
-    groupsApi.members(groupId).then((m) => alive && setMembers(m || [])).catch(() => {});
     groupsApi.reactions(groupId).then((map) => alive && setReactionsMap(map || {})).catch(() => {});
     groupsApi.updateLastSeen(groupId, me).catch(() => {});
     return () => { alive = false; };
@@ -474,6 +491,10 @@ export default function GroupConversation() {
   };
 
   return (
+    // Native-stack screens are separate native containers, so the root
+    // KeyboardProvider doesn't reliably feed keyboard events here — wrap the
+    // screen in its own provider so the composer's KeyboardAvoidingView lifts.
+    <KeyboardProvider>
     <AuroraBackground palette={c}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {sel.active ? (
@@ -651,6 +672,7 @@ export default function GroupConversation() {
         </Pressable>
       </Modal>
     </AuroraBackground>
+    </KeyboardProvider>
   );
 }
 

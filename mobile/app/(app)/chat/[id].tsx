@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
   Platform, Alert, Modal,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -487,6 +487,10 @@ export default function ConversationScreen() {
   };
 
   return (
+    // Native-stack screens are separate native containers, so the root
+    // KeyboardProvider doesn't reliably feed keyboard events here — wrap the
+    // screen in its own provider so the composer's KeyboardAvoidingView lifts.
+    <KeyboardProvider>
     <AuroraBackground palette={c}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {/* Header */}
@@ -682,6 +686,7 @@ export default function ConversationScreen() {
         </Pressable>
       </Modal>
     </AuroraBackground>
+    </KeyboardProvider>
   );
 }
 
