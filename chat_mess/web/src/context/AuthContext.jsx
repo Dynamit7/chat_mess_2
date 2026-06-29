@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import socket, { registerUser } from "../socket";
+import { clearListCache } from "../lib/listCache";
 
 const AuthContext = createContext(null);
 
@@ -35,6 +36,7 @@ export function AuthProvider({ children }) {
     ["token", "refreshToken", "userId", "username", "nickname", "avatar"].forEach((k) =>
       localStorage.removeItem(k)
     );
+    clearListCache();
     setUser(null);
     socket.disconnect();
   };

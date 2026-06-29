@@ -8,6 +8,7 @@ import { channelsApi } from "../api/client";
 import { useSocket } from "../context/SocketContext";
 import { useAuth } from "../context/AuthContext";
 import { useUnread } from "../context/UnreadContext";
+import { getCachedList, setCachedList, listKeys } from "../lib/listCache";
 
 export default function ChannelsSection() {
   const { user } = useAuth();
@@ -15,8 +16,10 @@ export default function ChannelsSection() {
   const unread = useUnread();
   const me = Number(user.userId);
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Paint the last list instantly from cache; only show a spinner on a true
+  // cold start (no cache yet). The fresh copy loads quietly in the background.
+  const [items, setItems] = useState(() => getCachedList(listKeys.channels(me)) || []);
+  const [loading, setLoading] = useState(() => !getCachedList(listKeys.channels(me)));
   const [active, setActive] = useState(null);
   const [creating, setCreating] = useState(false);
   const [profile, setProfile] = useState(false);
@@ -36,13 +39,16 @@ export default function ChannelsSection() {
 
   const load = useCallback(
     (search) => {
-      setLoading(true);
+      // Block with a spinner only when there's nothing to show: a search query,
+      // or a default list with no cache yet. Otherwise refresh behind the cache.
+      if (search || !getCachedList(listKeys.channels(me))) setLoading(true);
       Promise.all([channelsApi.list(me, search), channelsApi.unreadCounts(me).catch(() => [])])
         .then(([channels, unread]) => {
           const map = new Map((unread || []).map((u) => [Number(u.channelId), u.unreadCount]));
           const list = (channels || []).map((c) => ({ ...c, unreadCount: map.get(Number(c.id)) || 0 }));
           list.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
           setItems(list);
+          if (!search) setCachedList(listKeys.channels(me), list.slice(0, 50));
         })
         .catch(() => setItems([]))
         .finally(() => setLoading(false));

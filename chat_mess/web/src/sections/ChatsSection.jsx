@@ -8,6 +8,7 @@ import { messagesApi, usersApi } from "../api/client";
 import { useSocket } from "../context/SocketContext";
 import { useAuth } from "../context/AuthContext";
 import { useUnread } from "../context/UnreadContext";
+import { getCachedList, setCachedList, listKeys } from "../lib/listCache";
 
 // 1-on-1 direct messages section (sidebar + conversation pane).
 export default function ChatsSection() {
@@ -16,8 +17,10 @@ export default function ChatsSection() {
   const unread = useUnread();
   const me = Number(user.userId);
 
-  const [chats, setChats] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Paint the last list instantly from cache; only show a spinner on a true
+  // cold start (no cache yet). The fresh copy loads quietly in the background.
+  const [chats, setChats] = useState(() => getCachedList(listKeys.chats(me)) || []);
+  const [loading, setLoading] = useState(() => !getCachedList(listKeys.chats(me)));
   const [onlineIds, setOnlineIds] = useState(() => new Set());
   const [active, setActive] = useState(null);
   const [profileUserId, setProfileUserId] = useState(null);
@@ -50,6 +53,7 @@ export default function ChatsSection() {
         list.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
         setChats(list);
         setOnlineIds(new Set(list.filter((c) => c.isOnline).map((c) => Number(c.partnerId))));
+        setCachedList(listKeys.chats(me), list.slice(0, 50));
         setLoading(false);
       })
       .catch(() => alive && setLoading(false));
