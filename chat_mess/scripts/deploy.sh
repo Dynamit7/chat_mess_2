@@ -29,7 +29,7 @@ DOMAIN=https://polat.digital
 # а скачивается с EAS-CDN в web/public перед сборкой и раздаётся как
 # https://polat.digital/talkify.apk. После новой сборки в EAS обнови URL:
 #   cd mobile && eas build:view <BUILD_ID>  →  поле "Application Archive URL".
-APK_URL="https://expo.dev/artifacts/eas/Ks3p22HrtapP7GdfqpwVNWujQmGbLH9vDMIV6vYiOQE.apk"
+APK_URL="https://expo.dev/artifacts/eas/fxfa_AHfw-8oNQ6Vl2Kh1mLeKOg_gNz9rGLT7aO0JWk.apk"
 
 echo "==> chat_mess deploy (root: $ROOT)"
 
