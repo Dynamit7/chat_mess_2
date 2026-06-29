@@ -25,6 +25,7 @@ const {
   cacheChannelMembers,
   invalidateChannelMembers,
 } = require("../utils/redisClient");
+const { sendPushToUsers, userIdsInRoom, previewBody } = require("../utils/push");
 
 const router = express.Router();
 
@@ -170,6 +171,24 @@ router.post("/:channelId/message", upload.single("file"), async (req, res) => {
     });
 
     req.io.to(`channel_${channelId}`).emit("channelMessageReceived", messageWithDecryptedText);
+
+    // Push subscribers who aren't currently viewing this channel (Telegram-style):
+    // skip the author and anyone in the `channel_<id>` room.
+    try {
+      const viewing = await userIdsInRoom(req.io, `channel_${channelId}`);
+      const targets = memberIds.filter(
+        (id) => Number(id) !== userIdNum && !viewing.has(Number(id))
+      );
+      if (targets.length) {
+        sendPushToUsers(targets, {
+          title: channel?.name || "Channel",
+          body: previewBody(sender?.username, type, messageWithDecryptedText.text),
+          data: { type: "channelMessage", channelId: Number(channelId), channelName: channel?.name || "" },
+        }).catch(() => {});
+      }
+    } catch (pushErr) {
+      console.error("Channel push error:", pushErr);
+    }
 
     // Инвалидируем кэш сообщений и список каналов для всех участников
     await invalidateChannelMessages(channelId);

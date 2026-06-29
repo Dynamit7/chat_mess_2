@@ -19,6 +19,7 @@ const {
   cacheGroupMembers,
   invalidateGroupMembers,
 } = require("../utils/redisClient");
+const { sendPushToUsers, userIdsInRoom, previewBody } = require("../utils/push");
 
 const router = express.Router();
 const root = require("../proto/group_message_pb");
@@ -467,6 +468,25 @@ router.post("/:groupId/message", uploadLarge.single("file"), async (req, res) =>
         newMessage.id
       } to users: ${memberIds.join(", ")}`
     );
+
+    // Push members who aren't currently viewing this group (Telegram-style):
+    // skip the sender and anyone in the `group_<id>` room.
+    try {
+      const viewing = await userIdsInRoom(req.io, `group_${groupId}`);
+      const targets = memberIds.filter(
+        (id) => Number(id) !== userIdNum && !viewing.has(Number(id))
+      );
+      if (targets.length) {
+        const grp = await Group.findByPk(groupId, { attributes: ["name"] });
+        sendPushToUsers(targets, {
+          title: grp?.name || "Group",
+          body: previewBody(sender?.username, newMessage.type, text),
+          data: { type: "groupMessage", groupId: Number(groupId), groupName: grp?.name || "" },
+        }).catch(() => {});
+      }
+    } catch (pushErr) {
+      console.error("Group push error:", pushErr);
+    }
 
     // Инвалидируем кэш сообщений и список групп для всех участников
     await invalidateGroupMessages(groupId);

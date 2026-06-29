@@ -87,6 +87,7 @@ const {
 const bcrypt = require("bcrypt");
 
 const { Expo } = require("expo-server-sdk");
+const { sendPushToUsers, userIdsInRoom, previewBody } = require("./utils/push");
 const { Op } = require("sequelize");
 const { decrypt } = require("./utils/encryption");
 
@@ -983,23 +984,22 @@ socket.on("sendMessage", async (data) => {
 
     log(`✅ Socket: Last message updated for chat between ${fromUserId} and ${toUserId}: "${lastMessageText}"`);
 
-    // Получаем push токен из Redis
-    const pushToken = await getPushToken(toUserId);
-    if (pushToken && Expo.isExpoPushToken(pushToken)) {
-      const messagesToSend = [
-        {
-          to: pushToken,
-          sound: "default",
-          body: `Новое сообщение от ${senderInfo.username || "пользователя"}: ${text}`,
-          data: { fromUserId, text },
+    // Push the recipient — but only if they aren't currently viewing this chat
+    // (Telegram-style). The chat screen joins room `chat_<min>_<max>`.
+    const dmRoom = `chat_${Math.min(Number(fromUserId), Number(toUserId))}_${Math.max(Number(fromUserId), Number(toUserId))}`;
+    const viewing = await userIdsInRoom(io, dmRoom);
+    if (!viewing.has(Number(toUserId))) {
+      sendPushToUsers([toUserId], {
+        title: senderInfo.username || "New message",
+        body: previewBody(senderInfo.username, type, text),
+        // `type: 'message'` + fromUserId is what the client's tap-router expects.
+        data: {
+          type: "message",
+          fromUserId: Number(fromUserId),
+          senderUsername: senderInfo.username || "",
+          senderPicture: senderInfo.avatar || "",
         },
-      ];
-      try {
-        const ticketChunk = await expo.sendPushNotificationsAsync(messagesToSend);
-        log("Push notification result:", ticketChunk);
-      } catch (pushErr) {
-        console.error("Error sending push notification:", pushErr);
-      }
+      }).catch(() => {});
     }
   } catch (err) {
     console.error("Error in sendMessage socket handler:", err);
