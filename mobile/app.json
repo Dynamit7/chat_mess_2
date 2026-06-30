@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "com.xusan.nexusmessenger",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#08090B",
         "foregroundImage": "./assets/android-icon-foreground.png",

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "722326727365",
+    "project_id": "messenger-a5b19",
+    "storage_bucket": "messenger-a5b19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:722326727365:android:b1ea287926c7b933175eac",
+        "android_client_info": {
+          "package_name": "com.xusan.nexusmessenger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGB7-htnsHiav-94NcmvBeCFFbQ6aNO6g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
