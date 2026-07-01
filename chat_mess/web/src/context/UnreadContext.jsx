@@ -11,10 +11,14 @@ export function UnreadProvider({ children }) {
   const { user } = useAuth();
   const me = Number(user?.userId);
   const [counts, setCounts] = useState({ chats: {}, groups: {}, channels: {} });
+  // Reactive mirror of activeRef so the layout can react (mobile: show the
+  // conversation pane and hide the sidebar when a chat is open).
+  const [hasActiveConv, setHasActiveConv] = useState(false);
   const activeRef = useRef({ section: null, id: null });
 
   const setActiveConv = useCallback((section, id) => {
     activeRef.current = { section, id: id == null ? null : Number(id) };
+    setHasActiveConv(section != null && id != null);
   }, []);
 
   const clear = useCallback((section, id) => {
@@ -102,9 +106,9 @@ export function UnreadProvider({ children }) {
     channels: Object.values(counts.channels).reduce((a, b) => a + b, 0),
   }), [counts]);
 
-  const value = { counts, totals, bump, clear, hydrate, setActiveConv };
+  const value = { counts, totals, bump, clear, hydrate, setActiveConv, hasActiveConv };
   return <UnreadContext.Provider value={value}>{children}</UnreadContext.Provider>;
 }
 
 export const useUnread = () =>
-  useContext(UnreadContext) || { counts: {}, totals: {}, bump: () => {}, clear: () => {}, hydrate: () => {}, setActiveConv: () => {} };
+  useContext(UnreadContext) || { counts: {}, totals: {}, bump: () => {}, clear: () => {}, hydrate: () => {}, setActiveConv: () => {}, hasActiveConv: false };

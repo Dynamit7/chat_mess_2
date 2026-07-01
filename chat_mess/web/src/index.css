@@ -1431,6 +1431,12 @@ a {
   to { background-position: -200% 0; }
 }
 
+/* Back-to-list arrow only matters on mobile, where the list and the
+   conversation share the same column. */
+.conv-back {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 64px 1fr;
@@ -1440,6 +1446,9 @@ a {
   }
   .app-shell:not(.has-conv) .pane {
     display: none;
+  }
+  .conv-back {
+    display: inline-flex;
   }
 }
 

@@ -423,7 +423,7 @@ export default function ConversationPane({ partner, onBack, onPartnerActivity })
     <section className="pane">
       <header className="conv-head">
         {onBack && (
-          <button className="icon-btn" onClick={onBack}>
+          <button className="icon-btn conv-back" onClick={onBack}>
             <IArrowLeft size={18} />
           </button>
         )}

@@ -25,11 +25,11 @@ function WorkspaceBody() {
     setSearchParams({ to: String(userId) }, { replace: true });
     setSection("chats");
   }, [setSearchParams]);
-  const { totals } = useUnread();
+  const { totals, hasActiveConv } = useUnread();
 
   return (
     <CallProvider>
-      <div className="app-shell">
+      <div className={`app-shell${hasActiveConv ? " has-conv" : ""}`}>
         <Rail
           section={section}
           onSection={setSection}
