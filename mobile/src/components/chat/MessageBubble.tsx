@@ -18,6 +18,8 @@ type Props = {
   me: number;
   onLongPress: (m: Message) => void;
   onImagePress?: (uri: string) => void;
+  /** Tap a video message to play it fullscreen. */
+  onVideoPress?: (uri: string) => void;
   /** Tap an existing reaction chip to toggle your own reaction of that emoji (Telegram-style). */
   onReactToggle?: (m: Message, emoji: string) => void;
   /** Tap a failed (unsent) message to retry / discard it. */
@@ -58,7 +60,7 @@ function Ticks({ msg, c }: { msg: Message; c: Palette }) {
   return <Ionicons name="checkmark" size={14} color={dim} />;
 }
 
-function MessageBubbleBase({ msg, isOut, grouped, me, onLongPress, onImagePress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect, palette = colors }: Props) {
+function MessageBubbleBase({ msg, isOut, grouped, me, onLongPress, onImagePress, onVideoPress, onReactToggle, onRetry, onReply, onShowReactors, senderName, myUsername, selectionMode, selected, selectable, onToggleSelect, palette = colors }: Props) {
   const c = palette;
   const { t } = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -66,7 +68,8 @@ function MessageBubbleBase({ msg, isOut, grouped, me, onLongPress, onImagePress,
   const isImage = msg.type === 'image' && !!msg.fileUrl;
   // Voice notes arrive as 'voice' (direct chats / web) or 'audio' (groups) — treat both as a voice player.
   const isAudio = (msg.type === 'audio' || msg.type === 'voice') && !!msg.fileUrl;
-  const isFile = (msg.type === 'file' || msg.type === 'video') && !!msg.fileUrl;
+  const isVideo = msg.type === 'video' && !!msg.fileUrl;
+  const isFile = msg.type === 'file' && !!msg.fileUrl;
 
   // Aggregate reactions by emoji: { '👍': { count, mine } }
   const agg: Record<string, { count: number; mine: boolean }> = {};
@@ -84,7 +87,7 @@ function MessageBubbleBase({ msg, isOut, grouped, me, onLongPress, onImagePress,
     styles.bubble,
     isOut ? styles.bubbleOut : styles.bubbleIn,
     grouped && (isOut ? styles.groupedOut : styles.groupedIn),
-    isImage && styles.bubbleMedia,
+    (isImage || isVideo) && styles.bubbleMedia,
   ];
 
   const bubbleContent = (
@@ -116,14 +119,18 @@ function MessageBubbleBase({ msg, isOut, grouped, me, onLongPress, onImagePress,
 
       {isAudio ? <VoiceMessage uri={fixFileUrl(msg.fileUrl)} isOut={isOut} /> : null}
 
+      {isVideo ? (
+        <Pressable style={styles.videoCard} onPress={() => onVideoPress?.(fixFileUrl(msg.fileUrl))}>
+          <View style={styles.videoPlay}>
+            <Ionicons name="play" size={26} color="#fff" />
+          </View>
+        </Pressable>
+      ) : null}
+
       {isFile ? (
         <View style={styles.fileRow}>
           <View style={[styles.fileIcon, { backgroundColor: isOut ? 'rgba(255,255,255,0.18)' : c.accentSoft }]}>
-            <Ionicons
-              name={msg.type === 'video' ? 'play' : 'document'}
-              size={18}
-              color={isOut ? c.white : c.accent}
-            />
+            <Ionicons name="document" size={18} color={isOut ? c.white : c.accent} />
           </View>
           <Text numberOfLines={1} style={[styles.fileName, isOut && { color: c.white }]}>{msg.filename || 'Attachment'}</Text>
         </View>
@@ -230,6 +237,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   time: { fontFamily: font.mono, fontSize: 10.5, letterSpacing: 0.2 },
   edited: { fontFamily: font.mono, fontSize: 10.5, fontStyle: 'italic' },
   image: { width: 232, height: 232, borderRadius: 13, backgroundColor: c.glass },
+  videoCard: { width: 232, height: 150, borderRadius: 13, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  videoPlay: { width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(0,0,0,0.45)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' },
   forwardBanner: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   forwardBannerOut: {},
   forwardText: { color: c.accent, fontFamily: font.bodyMed, fontSize: 12, fontStyle: 'italic', flexShrink: 1 },

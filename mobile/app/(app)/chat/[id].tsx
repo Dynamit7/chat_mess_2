@@ -9,6 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -74,6 +75,7 @@ export default function ConversationScreen() {
   const [forwardMany, setForwardMany] = useState<ForwardPayload[] | null>(null);
   const [reactorsMsg, setReactorsMsg] = useState<Message | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [videoUri, setVideoUri] = useState<string | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const sel = useSelection<number>();
   const [atBottom, setAtBottom] = useState(true);
@@ -592,6 +594,7 @@ export default function ConversationScreen() {
                     myUsername={user?.username}
                     onLongPress={setSheetMsg}
                     onImagePress={setLightbox}
+                    onVideoPress={setVideoUri}
                     onReactToggle={reactTo}
                     onRetry={retryMessage}
                     onReply={setReplyTo}
@@ -685,9 +688,25 @@ export default function ConversationScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal visible={!!videoUri} transparent animationType="fade" onRequestClose={() => setVideoUri(null)} statusBarTranslucent>
+        <View style={styles.lightbox}>
+          {videoUri ? <VideoLightbox uri={videoUri} /> : null}
+          <Pressable style={[styles.lightboxClose, { top: insets.top + 12 }]} onPress={() => setVideoUri(null)}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+        </View>
+      </Modal>
     </AuroraBackground>
     </KeyboardProvider>
   );
+}
+
+// Fullscreen video player. Mounted only while a video is open (via the modal's
+// conditional render) so the player is created fresh and torn down on close.
+function VideoLightbox({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => { p.loop = false; p.play(); });
+  return <VideoView player={player} style={{ width: '100%', height: '80%' }} contentFit="contain" nativeControls />;
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
