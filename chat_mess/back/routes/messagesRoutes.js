@@ -15,11 +15,11 @@ const {
   getCachedChat,
   cacheChat,
   invalidateChat,
-  addNotificationToQueue,
   refreshUserOnline,
   invalidateGroupMessages,
   invalidateChannelMessages,
 } = require("../utils/redisClient");
+const { sendPushToUsers, userIdsInRoom, previewBody } = require("../utils/push");
 const root = require("../proto/group_message_pb");
 const chat = root.chat;
 
@@ -262,18 +262,29 @@ router.post("/sendMessage", async (req, res) => {
 
     await invalidateMessages(chatKey);
 
-  
-    await addNotificationToQueue({
-      userId: toUserId,
-      type: "message",
-      // Кладём имя/аватар отправителя, чтобы тап по пушу открывал чат сразу с
-      // заполненным заголовком (а не "Chat" без аватара).
-      data: {
-        ...messageData,
-        senderUsername: senderInfo?.username || "",
-        senderPicture: senderInfo?.avatar || "",
-      },
-    });
+    // Push the recipient — but only if they aren't currently viewing this chat
+    // (Telegram-style). The chat screen joins room `chat_<min>_<max>`. We send
+    // directly (like groups/channels) instead of via the queue worker, which is
+    // not running in production.
+    try {
+      const viewing = await userIdsInRoom(req.io, roomName);
+      if (!viewing.has(Number(toUserId))) {
+        sendPushToUsers([toUserId], {
+          title: senderInfo?.username || "New message",
+          body: previewBody(senderInfo?.username, type, text),
+          // `type: 'message'` + fromUserId is what the client's tap-router expects;
+          // sender name/avatar let the opened chat show a filled header.
+          data: {
+            type: "message",
+            fromUserId: Number(fromUserId),
+            senderUsername: senderInfo?.username || "",
+            senderPicture: senderInfo?.avatar || "",
+          },
+        }).catch(() => {});
+      }
+    } catch (pushErr) {
+      console.error("DM push error:", pushErr);
+    }
 
     return res.status(200).json({ success: true, message: messageData });
   } catch (err) {
